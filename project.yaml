@@ -1,0 +1,60 @@
+schema_version: 1
+
+project:
+  display_name: Agent Engineering Standard
+  slug: agent-engineering-standard
+  repository: kgsmith19/agent-engineering-standard
+  owner: kgsmith19
+  default_branch: main
+  type: engineering-standard
+
+harness:
+  tracker: github-issues
+  pipeline: github-actions
+  gate: standard-pr-gate
+  secrets: infisical
+  identity: github-apps
+  filesystem: local-worktrees
+  runtime: local-agent-runtime
+  extensions: sibling-contract
+  commands: standardctl
+edition: full
+
+work:
+  tracker: github-issues
+  releases: github-milestones
+  thin_issue_required: true
+  branch_pattern: "issue/{issue_number}-{slug}"
+  worktree_pattern: ".worktrees/issue-{issue_number}-{slug}"
+
+providers:
+  supported:
+    - anthropic
+    - openai
+    - gemini
+  independent_verifier_required_from: R2
+  superpowers_required_when_available: true
+
+ci:
+  workflow: .github/workflows/pr-gate.yml
+  required_check: "Agent Engineering Standard PR Gate"
+  merge_policy_workflow: .github/workflows/merge-policy.yml
+
+evidence:
+  output_directory: .evidence
+  artifact_retention_days: 90
+  issue_index: true
+  pr_index: true
+  require_ui_screenshots: true
+  manifest: .evidence/manifest.json
+
+protection:
+  ruleset: "Agent Engineering Standard Main Protection"
+  merge_method: squash
+  ordinary_approvals: 0
+
+commands:
+  verify: python tools/standardctl.py verify
+  doctor: python tools/standardctl.py doctor
+  tests: python -m unittest discover -s tests -p "test_*.py"
+  worktrees: python tools/standardctl.py worktrees reconcile

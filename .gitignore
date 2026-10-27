@@ -1,0 +1,21 @@
+# Local agent scratch state — never commit
+.worktrees/
+.superpowers/
+.agent-runtime/
+.evidence/
+.kilo/agent/
+.kilo/plans/
+
+# Capability layer (agent-extensions) — machine-global, never committed
+.agent-extensions/
+.bootstrap-out/
+.agent-state/
+
+# Uncommitted local overlay (additive; never shadows a committed AGENTS.md)
+AGENTS.local.md
+AGENTS.override.md
+
+# Python bytecode caches
+__pycache__/
+
+.env.agent-models

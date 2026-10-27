@@ -1,0 +1,62 @@
+# Rendered by standardctl init/update. Tokens are replaced with actual values;
+# adopters delete inapplicable commands rather than leaving no-op entries.
+schema_version: 1
+
+project:
+  display_name: __APP_DISPLAY_NAME__
+  slug: __APP_SLUG__
+  repository: __REPOSITORY__
+  owner: __OWNER_LOGIN__
+  default_branch: __DEFAULT_BRANCH__
+  type: application
+
+harness:
+  tracker: github-issues
+  pipeline: github-actions
+  gate: standard-pr-gate
+  secrets: infisical
+  identity: github-apps
+  filesystem: local-worktrees
+  runtime: local-agent-runtime
+  extensions: sibling-contract
+  commands: standardctl
+edition: full
+
+work:
+  tracker: github-issues
+  releases: github-milestones
+  thin_issue_required: true
+  branch_pattern: "issue/{issue_number}-{slug}"
+  worktree_pattern: ".worktrees/issue-{issue_number}-{slug}"
+
+providers:
+  supported:
+    - anthropic
+    - openai
+    - gemini
+  independent_verifier_required_from: R2
+  superpowers_required_when_available: true
+
+ci:
+  workflow: .github/workflows/pr-gate.yml
+  required_check: "__PR_GATE_CHECK__"
+  merge_policy_workflow: .github/workflows/merge-policy.yml
+
+evidence:
+  output_directory: .evidence
+  artifact_retention_days: 90
+  issue_index: true
+  pr_index: true
+  require_ui_screenshots: true
+  manifest: .evidence/manifest.json
+
+protection:
+  ruleset: "__MAIN_RULESET_NAME__"
+  merge_method: squash
+  ordinary_approvals: 0
+
+commands:
+  # Replace with this repository's actual verified commands; delete any that
+  # do not apply. Do not add no-op commands.
+  verify: python tools/standardctl.py verify
+  tests: echo "replace with the repository's real test command"
