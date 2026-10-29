@@ -1,0 +1,166 @@
+{
+  "schema": "hyper-agents.issue-manifest/v1",
+  "generated_for": "P01 (#1)",
+  "issues": [
+    {
+      "key": "P02-1",
+      "title": "P02: RoleManifest schema (strict pydantic) with JSON Schema export",
+      "depends_on": [],
+      "files": [
+        "src/hyper_agents/domain/roles.py",
+        "tests/unit/test_roles.py",
+        "schemas/role.schema.json"
+      ],
+      "red_test": "tests/unit/test_roles.py::test_unknown_capability_is_rejected fails before roles.py exists",
+      "acceptance": [
+        "every V1 manifest field is typed and strict",
+        "the exported JSON Schema matches the model (snapshot)",
+        "path and symlink escapes in permitted_paths are rejected"
+      ],
+      "negative_cases": [
+        "inherited elevated tool",
+        "version drift",
+        "unknown field"
+      ],
+      "inspiration": "Argus role_config.py, OpenHands AgentDefinition",
+      "rollback": "revert the PR; nothing consumes the model yet"
+    },
+    {
+      "key": "P02-2",
+      "title": "P02: the four owned role bundles under agents/catalog/",
+      "depends_on": [
+        "P02-1"
+      ],
+      "files": [
+        "agents/catalog/{planner,builder,reviewer,verifier}/*"
+      ],
+      "red_test": "tests/conformance/test_catalog.py::test_every_role_validates fails with an empty catalog",
+      "acceptance": [
+        "each role validates against RoleManifest",
+        "the reviewer grants no write path and no publish credential",
+        "the verifier has no repair capability"
+      ],
+      "negative_cases": [
+        "a persona.md asking for writes does not change the grant"
+      ],
+      "inspiration": "TAKT facets (persona/instructions/output contract)",
+      "rollback": "revert; the loader in P02-3 tolerates an absent catalog only in tests"
+    },
+    {
+      "key": "P02-3",
+      "title": "P02: CatalogLoader, CatalogValidator, RoleRegistry",
+      "depends_on": [
+        "P02-2"
+      ],
+      "files": [
+        "src/hyper_agents/application/catalog.py",
+        "tests/unit/test_catalog_loader.py"
+      ],
+      "red_test": "loading a tagged-YAML (!!python/object) manifest must raise PolicyDenied",
+      "acceptance": [
+        "safe_load only",
+        "repeated loads give identical compiled contracts",
+        "unknown roles are rejected"
+      ],
+      "negative_cases": [
+        "symlinked role directory",
+        "forged manifest version"
+      ],
+      "inspiration": "OpenHands file_based_subagents example",
+      "rollback": "revert"
+    },
+    {
+      "key": "P02-4",
+      "title": "P02: RoleCompiler with fixed prompt precedence; roles list/show/validate CLI",
+      "depends_on": [
+        "P02-3"
+      ],
+      "files": [
+        "src/hyper_agents/application/compiler.py",
+        "src/hyper_agents/interfaces/cli.py",
+        "tests/integration/test_roles_cli.py"
+      ],
+      "red_test": "compiled prompt order must be owner task > acceptance > role instructions > knowledge",
+      "acceptance": [
+        "hard controls are emitted as structured grants, never prompt text",
+        "CLI lists, shows and validates roles",
+        "an offline no-LLM demonstration runs"
+      ],
+      "negative_cases": [
+        "a role instruction trying to override owner task precedence"
+      ],
+      "inspiration": "TAKT development-core workflow",
+      "rollback": "revert"
+    },
+    {
+      "key": "P03-1",
+      "title": "P03: ExecutorPort, FakeExecutor and AgentFactory.mint/discharge",
+      "depends_on": [
+        "P02-4"
+      ],
+      "files": [
+        "src/hyper_agents/application/ports.py",
+        "src/hyper_agents/adapters/fake_executor.py",
+        "src/hyper_agents/application/factory.py"
+      ],
+      "red_test": "a second mint with the same idempotency key must return the same lease",
+      "acceptance": [
+        "MintRequest/Lease/Receipt are typed",
+        "mint is idempotent",
+        "discharge always yields a receipt, including on cancel"
+      ],
+      "negative_cases": [
+        "mint with an empty acceptance contract",
+        "budget of zero"
+      ],
+      "inspiration": "OpenHands agent_delegation example",
+      "rollback": "revert"
+    },
+    {
+      "key": "P03-2",
+      "title": "P03: OpenHandsExecutor adapter with a fail-closed compatibility probe",
+      "depends_on": [
+        "P03-1"
+      ],
+      "files": [
+        "src/hyper_agents/adapters/openhands_executor.py",
+        "tests/integration/test_openhands_probe.py"
+      ],
+      "red_test": "with the SDK absent, doctor and mint must fail with an actionable error, never a fake success",
+      "acceptance": [
+        "openhands-sdk pinned after license verification",
+        "verified imports only",
+        "one real tool invocation traced when Docker and a key exist"
+      ],
+      "negative_cases": [
+        "incompatible SDK version"
+      ],
+      "inspiration": "OpenHands docker sandboxed server example",
+      "rollback": "revert; FakeExecutor remains"
+    },
+    {
+      "key": "P03-3",
+      "title": "P03: hardened Docker workspaces and a host-side tool policy gateway",
+      "depends_on": [
+        "P03-2"
+      ],
+      "files": [
+        "src/hyper_agents/adapters/sandbox.py",
+        "tests/security/test_sandbox_policy.py"
+      ],
+      "red_test": "a reviewer worker writing to its snapshot must fail at the OS level",
+      "acceptance": [
+        "non-root, dropped caps, pids/mem/cpu limits",
+        "network deny by default per role",
+        "cancellation kills the process tree and revokes the credential"
+      ],
+      "negative_cases": [
+        "symlink escape",
+        "injected shell command",
+        "orphan container after crash"
+      ],
+      "inspiration": "OpenHands defense_in_depth example, roborev read_only.go",
+      "rollback": "revert"
+    }
+  ]
+}
