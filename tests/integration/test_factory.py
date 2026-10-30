@@ -7,9 +7,7 @@ from hyper_agents.application.catalog import CatalogLoader
 from hyper_agents.application.factory import AgentFactory, MintRequest, Receipt
 from hyper_agents.domain.errors import InvalidInput
 
-CATALOG_ROOT = (
-    __import__("pathlib").Path(__file__).parent.parent.parent / "agents" / "catalog"
-)
+CATALOG_ROOT = __import__("pathlib").Path(__file__).parent.parent.parent / "agents" / "catalog"
 
 
 def test_mint_request_is_typed() -> None:
