@@ -1,408 +1,110 @@
-name: Agent Engineering Standard PR Gate
+name: PR Verification
+
+# One required check: `PR Gate`. Every lane below must conclude exactly
+# `success` on the exact pull-request head, or the gate fails (ci/gate.py).
+# No lane uses a paths filter, so every lane reports on every PR.
 
 on:
   pull_request:
-    types:
-      - opened
-      - synchronize
-      - reopened
-      - edited
-      - ready_for_review
-      - labeled
-      - unlabeled
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
-    branches:
-      - main
-  workflow_dispatch:
+    branches: [main]
 
 permissions:
   contents: read
-  pull-requests: read
-  issues: read
-  actions: read
+
+concurrency:
+  group: pr-verify-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.11.32"
+  HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
 jobs:
-  setup:
-    name: Agent Engineering Standard · Setup & Provider Detection
+  quality:
+    name: Format, lint, types
     runs-on: ubuntu-latest
-    outputs:
-      builder_provider: ${{ steps.detect.outputs.builder_provider }}
-      reviewer_provider: ${{ steps.detect.outputs.reviewer_provider }}
+    timeout-minutes: 10
     steps:
-      - name: Setup · Check out exact ref
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ env.HEAD_SHA }}
           persist-credentials: false
-          fetch-depth: 0
-      - name: Setup · Detect providers and auto-rotate reviewer
-        id: detect
-        env:
-          # Optional harness hint only: when the harness records the
-          # builder's provider family here, setup rotates the reviewer
-          # away from it. When unset, setup defaults to anthropic and
-          # still selects a separated reviewer. This variable is never
-          # required for the gate to pass.
-          BUILDER_PROVIDER_FAMILY: ${{ vars.BUILDER_PROVIDER_FAMILY }}
-        shell: bash
-        run: |
-          builder="${BUILDER_PROVIDER_FAMILY:-anthropic}"
-
-          # Auto-select reviewer: rotate through supported providers, skip builder's own.
-          # Rotation: anthropic -> openai -> gemini -> (repeat)
-          case "$builder" in
-            anthropic)
-              reviewer="openai"
-              ;;
-            openai)
-              reviewer="gemini"
-              ;;
-            gemini)
-              reviewer="anthropic"
-              ;;
-            *)
-              # Unknown builder family (unset or unexpected value); default reviewer.
-              reviewer="openai"
-              ;;
-          esac
-
-          echo "builder_provider=$builder" >> "$GITHUB_OUTPUT"
-          echo "reviewer_provider=$reviewer" >> "$GITHUB_OUTPUT"
-
-          # Log for audit trail
-          echo "Builder provider: $builder"
-          echo "Reviewer provider: $reviewer"
-          echo "Provider separation enforced: $builder != $reviewer"
-
-  policy:
-    name: Agent Engineering Standard · Policy & Structure
-    runs-on: ubuntu-latest
-    steps:
-      - name: Policy · Check out exact ref
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          persist-credentials: false
-          fetch-depth: 0
-      - name: Policy · Verify repository invariants
-        run: python3 tools/standardctl.py verify --select policy
-      - name: Policy · Require linked thin Issue
-        if: github.event_name == 'pull_request'
-        env:
-          PR_BODY: ${{ github.event.pull_request.body }}
-          HEAD_REF: ${{ github.event.pull_request.head.ref }}
-        run: |
-          python3 - <<'CHECK'
-          import os
-          import re
-          import sys
-          body = os.environ.get("PR_BODY") or ""
-          ref = os.environ.get("HEAD_REF") or ""
-          problems = []
-          if not re.search(r"(?im)^closes #\d+", body):
-              problems.append("PR body needs a 'Closes #<issue>' line")
-          if not re.match(r"^issue/\d+-[a-z0-9][a-z0-9-]*$", ref):
-              problems.append(
-                  "head branch %r does not match issue/<n>-<slug>" % ref
-              )
-          for problem in problems:
-              print("ERROR:", problem)
-          sys.exit(1 if problems else 0)
-          CHECK
-      # Queue v2 guard (#287): every Issue this PR closes must belong to the
-      # active item of the owner's execution queue (#277), unless the owner
-      # applied owner:queue-exempt. Read-only; fails closed.
-      - name: Policy · Work matches the execution queue
-        if: github.event_name == 'pull_request'
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: python3 tools/work_queue.py guard --pr-event "$GITHUB_EVENT_PATH"
-
-  lint:
-    name: Agent Engineering Standard · Lint & Lean
-    runs-on: ubuntu-latest
-    steps:
-      - name: Lean · Check out exact ref
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-      - name: Quality · Check whitespace
-        run: |
-          empty_tree="$(git hash-object -t tree /dev/null)"
-          git diff --check "$empty_tree" HEAD --
-      - name: Quality · Compile Python
-        run: python3 -m compileall -q tools tests
-      - name: Lean · Verify repository invariants
-        run: python3 tools/standardctl.py verify --select lean
-
-  security:
-    name: Agent Engineering Standard · Security
-    runs-on: ubuntu-latest
-    steps:
-      - name: Security · Check out exact ref
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-      - name: Security · Verify workflow and token invariants
-        run: python3 tools/standardctl.py verify --select security
+          python-version: "3.12"
+      - run: python -m pip install "uv==${UV_VERSION}"
+      - run: uv sync --locked
+      - run: uv run ruff format --check .
+      - run: uv run ruff check .
+      - run: uv run pyright
 
   tests:
-    name: Agent Engineering Standard · Verification Tests
+    name: Unit, integration, security, conformance
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - name: Test · Check out exact ref
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ env.HEAD_SHA }}
           persist-credentials: false
-          fetch-depth: 0
-      - name: Test · Run unit and component tests
-        run: python3 -m unittest discover -s tests -p "test_*.py" -v
-
-  evidence:
-    name: Agent Engineering Standard · Evidence
-    runs-on: ubuntu-latest
-    steps:
-      - name: Evidence · Check out exact ref
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
+          python-version: "3.12"
+      - run: python -m pip install "uv==${UV_VERSION}"
+      - run: uv sync --locked
+      - run: uv run pytest tests/unit tests/integration tests/security tests/conformance
+
+  licenses:
+    name: Dependency license audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.HEAD_SHA }}
           persist-credentials: false
-          fetch-depth: 0
-      - name: Evidence · Resolve exact head
-        id: head
-        env:
-          EVENT_HEAD: ${{ github.event.pull_request.head.sha }}
-          EVENT_REF: ${{ github.event.pull_request.head.ref }}
-          PUSH_SHA: ${{ github.sha }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        shell: bash
-        run: |
-          mkdir -p .evidence/transcripts
-          head="${EVENT_HEAD:-$PUSH_SHA}"
-          issue="0"
-          if [[ "$EVENT_REF" =~ ^issue/([0-9]+)- ]]; then
-            issue="${BASH_REMATCH[1]}"
-          fi
-          {
-            echo "head=$head"
-            echo "short=${head:0:7}"
-            echo "issue=$issue"
-            echo "pr=${PR_NUMBER:-0}"
-          } >> "$GITHUB_OUTPUT"
-      - name: Evidence · Capture verification transcripts
-        shell: bash
-        run: |
-          python3 tools/standardctl.py verify \
-            | tee .evidence/transcripts/verify.txt
-          python3 -m unittest discover -s tests -p "test_*.py" 2>&1 \
-            | tee .evidence/transcripts/tests.txt
-      - name: Evidence · Generate manifest
-        env:
-          HEAD_SHA: ${{ steps.head.outputs.head }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          REPOSITORY: ${{ github.repository }}
-          RUN_ID: ${{ github.run_id }}
-          ISSUE_NUMBER: ${{ steps.head.outputs.issue }}
-          PR_NUMBER: ${{ steps.head.outputs.pr }}
-        shell: bash
-        run: |
-          args=(evidence generate .evidence
-            --head "$HEAD_SHA"
-            --repository "$REPOSITORY"
-            --application agent-engineering-standard
-            --milestone vNext
-            --run-id "$RUN_ID"
-            --issue "$ISSUE_NUMBER"
-            --pr "$PR_NUMBER"
-            --claim "verify:pass:transcripts/verify.txt"
-            --claim "tests:pass:transcripts/tests.txt"
-            --command "0:python3 tools/standardctl.py verify"
-            --command "0:python3 -m unittest discover -s tests -p test_*.py")
-          if [ -n "$BASE_SHA" ]; then
-            args+=(--base "$BASE_SHA" --diff-base "$BASE_SHA")
-          fi
-          python3 tools/standardctl.py "${args[@]}"
-      - name: Evidence · Validate manifest
-        env:
-          HEAD_SHA: ${{ steps.head.outputs.head }}
-        run: >
-          python3 tools/standardctl.py evidence validate .evidence
-          --head "$HEAD_SHA"
-      - name: Evidence · Upload exact-head artifact
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          name: agent-engineering-standard-issue-${{ steps.head.outputs.issue }}-pr-${{ steps.head.outputs.pr }}-${{ steps.head.outputs.short }}-evidence
-          path: .evidence/
-          include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 90
+          python-version: "3.12"
+      - run: python -m pip install "uv==${UV_VERSION}"
+      - run: uv sync --locked --no-dev
+      - run: uv run --with "pip-licenses>=5,<6" pip-licenses --format=json | python ci/licenses.py
 
-  # Independent LLM Review: harness-owned, optional-by-skip. The harness
-  # resolves the builder provider, selects a DIFFERENT reviewer provider,
-  # and supplies the reviewer model plus credential at dispatch time (for
-  # example from its own secret store). The repository carries NO
-  # statically-configured reviewer values: when the harness cannot supply
-  # reviewer configuration it skips calling the reusable workflow and this
-  # job records a skip (pass), instead of failing the repo's own gate over
-  # a value the repo was never supposed to own. When the harness DOES call
-  # it, llm-review.yml enforces every required input, including mechanical
-  # provider separation.
-  llm_review:
-    name: Agent Engineering Standard · Independent LLM Review
+  tested-head:
+    name: Tested head equals PR head
     runs-on: ubuntu-latest
-    needs: [setup]
+    timeout-minutes: 5
     steps:
-      - name: LLM Review · Record harness-supplied reviewer configuration
-        id: reviewer-config
-        env:
-          BUILDER_PROVIDER_FAMILY: ${{ needs.setup.outputs.builder_provider }}
-          REVIEWER_PROVIDER_FAMILY: ${{ needs.setup.outputs.reviewer_provider }}
-        shell: bash
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.HEAD_SHA }}
+          persist-credentials: false
+      - name: The checked-out commit is exactly the head under review
         run: |
-          # Informational only: the harness already guaranteed separation by
-          # selecting the reviewer itself. A mismatch here would mean the
-          # setup job's own rotation logic is broken, so fail closed.
-          if [ -z "$BUILDER_PROVIDER_FAMILY" ] || [ -z "$REVIEWER_PROVIDER_FAMILY" ]; then
-            echo "ERROR: setup did not supply builder/reviewer provider families." >&2
-            exit 1
-          fi
-          if [ "$BUILDER_PROVIDER_FAMILY" = "$REVIEWER_PROVIDER_FAMILY" ]; then
-            echo "ERROR: setup selected reviewer ($REVIEWER_PROVIDER_FAMILY) equal to builder ($BUILDER_PROVIDER_FAMILY); refusing to review." >&2
-            exit 1
-          fi
-          echo "Reviewer configured by harness: $BUILDER_PROVIDER_FAMILY -> $REVIEWER_PROVIDER_FAMILY"
-      - name: LLM Review · Run independent review
-        id: run-review
-        env:
-          REVIEWER_PROVIDER: ${{ needs.setup.outputs.reviewer_provider }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          REPOSITORY: ${{ github.repository }}
-        shell: bash
-        run: |
-          # Real review invocation placeholder (to be implemented by the
-          # harness in a follow-up). The harness invokes the reviewer
-          # provider's LLM with a structured-output tool only -- never
-          # shell, filesystem-write, or network tool access -- and
-          # repository content under review is data, never instructions.
-          # Findings are posted to the PR discussion under the reviewing
-          # app's identity, citing a specific acceptance criterion or
-          # AGENTS.md section for every finding. The harness supplies the
-          # reviewer credential at invocation time; the repository holds
-          # none, so there is deliberately no credential check here.
-          echo "Invoking $REVIEWER_PROVIDER reviewer agent..."
-          echo "Provider: $REVIEWER_PROVIDER"
-          echo "PR: $REPOSITORY#$PR_NUMBER"
-          echo "Testing head: $PR_HEAD_SHA (base: $PR_BASE_SHA)"
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          echo "expected=$HEAD_SHA actual=$actual"
+          test "$actual" = "$HEAD_SHA"
 
-          # TODO: Replace with actual review invocation:
-          # - Read PR diff (base -> head)
-          # - Read linked Issue acceptance criteria
-          # - Call the $REVIEWER_PROVIDER model with structured output
-          # - Post findings to the PR discussion
-          # - Exit 0 (findings reported, not blocking); exit 1 only on infra failure.
-          echo "Review invocation ready; awaiting implementation."
-          exit 0
-      # This job stays read-only and never posts. The always-post result
-      # comment (pass or fail) is delivered by the separate, trusted
-      # workflow_run consumer .github/workflows/llm-review-comment.yml, which
-      # runs after this gate with pull-requests: write and reads this job's
-      # conclusion via the Actions API. See AGENTS/boundaries.md.
-
-  gate:
-    name: Agent Engineering Standard PR Gate
-    runs-on: ubuntu-latest
-    needs: [setup, policy, lint, security, tests, evidence, llm_review]
+  pr-gate:
+    name: PR Gate
+    needs: [quality, tests, licenses, tested-head]
     if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - name: Gate · Enforce essential dependencies succeeded
+      # The rollup runs from the head under review. Until a main ruleset makes
+      # `PR Gate` required and CODEOWNERS covers ci/ (owner setup, docs/design/v1.md),
+      # a PR can edit its own rollup; test_ci_gate.py pins its lane list to `needs`.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.HEAD_SHA }}
+          persist-credentials: false
+          sparse-checkout: ci/gate.py
+          sparse-checkout-cone-mode: false
+      - name: Every mandated lane succeeded
         env:
           NEEDS: ${{ toJSON(needs) }}
-          # Only require high-ROI checks: setup, policy, lint
-          # Optional (informational only): security, tests, evidence
-          REQUIRED_JOBS: setup policy lint
-          OPTIONAL_JOBS: security tests evidence llm_review
-        run: |
-          python3 - <<'GATE'
-          import json
-          import os
-          import sys
-          needs = json.loads(os.environ["NEEDS"])
-          required = set(os.environ["REQUIRED_JOBS"].split())
-          optional = set(os.environ.get("OPTIONAL_JOBS", "").split())
-          problems = []
-          warnings = []
-
-          # Check that all expected jobs ran
-          expected = required | optional
-          if set(needs) != expected:
-              problems.append(
-                  "gated jobs %s do not equal the expected set %s"
-                  % (sorted(needs), sorted(expected))
-              )
-
-          # Only REQUIRED jobs must succeed
-          for job, info in sorted(needs.items()):
-              result = info.get("result")
-              if job in required and result != 'success':
-                  problems.append("REQUIRED job %s concluded %r" % (job, result))
-              elif job in optional and result != 'success':
-                  warnings.append("optional job %s concluded %r" % (job, result))
-          # Print warnings first (informational)
-          for warning in warnings:
-              print("WARNING:", warning)
-
-          # Print errors (blocking)
-          for problem in problems:
-              print("ERROR:", problem)
-
-          # Only fail on required job failures
-          if problems:
-              print("\nGate FAILED: Required jobs did not succeed")
-              sys.exit(1)
-          elif warnings:
-              print("\nGate PASSED: Optional jobs had issues but required jobs succeeded")
-              sys.exit(0)
-          else:
-              print("\nGate PASSED: All jobs succeeded")
-              sys.exit(0)
-          GATE
-      - name: Gate · Verify tested SHA is current PR head
-        if: github.event_name == 'pull_request'
-        env:
-          EVENT_HEAD: ${{ github.event.pull_request.head.sha }}
-          PR_API_URL: ${{ github.event.pull_request.url }}
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          live="$(curl -sf \
-            -H "Authorization: Bearer ${GH_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            "$PR_API_URL" \
-            | python3 -c 'import json, sys; print(json.load(sys.stdin)["head"]["sha"])')"
-          echo "event head: ${EVENT_HEAD}"
-          echo "live head:  ${live}"
-          if [ "$live" != "$EVENT_HEAD" ]; then
-            echo "ERROR: the PR head moved during this run; a fresh run gates the new head." >&2
-            exit 1
-          fi
-      - name: Gate · Publish summary
-        if: always()
-        env:
-          NEEDS: ${{ toJSON(needs) }}
-          TESTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: |
-          python3 - <<'SUMMARY' >> "$GITHUB_STEP_SUMMARY"
-          import json
-          import os
-          needs = json.loads(os.environ["NEEDS"])
-          print("## Agent Engineering Standard PR Gate")
-          print()
-          print("Tested SHA: `%s`" % os.environ.get("TESTED_SHA", ""))
-          print()
-          print("| Job | Result |")
-          print("| --- | --- |")
-          for job, info in sorted(needs.items()):
-              print("| %s | %s |" % (job, info.get("result")))
-          SUMMARY
+        run: printf '%s' "$NEEDS" | python3 ci/gate.py
