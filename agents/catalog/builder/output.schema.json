@@ -1,0 +1,21 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "files_changed": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "summary": {
+      "maxLength": 500,
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "files_changed",
+    "summary"
+  ],
+  "type": "object"
+}

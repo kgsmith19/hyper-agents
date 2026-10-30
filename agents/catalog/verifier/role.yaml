@@ -1,0 +1,21 @@
+id: verifier
+version: 0.1.0
+summary: "Runs the trusted checks for each criterion and reports pass or fail. Repairs nothing."
+capabilities: ["read_repo", "run_checks", "verify_criteria"]
+tools: ["read_file", "run_tests"]
+permitted_paths: ["src", "tests"]
+prohibited_writes: ["**"]
+network: none
+sandbox: workspace
+provider_tier: local
+limits:
+  max_turns: 15
+  timeout_seconds: 1200
+  max_tokens: 200000
+approval_thresholds:
+  max_files_changed: 0
+  max_lines_changed: 0
+input_schema: agents/catalog/task.schema.json
+output_schema: agents/catalog/verifier/output.schema.json
+evidence: [test_log, check_result]
+dependencies: ["builder"]

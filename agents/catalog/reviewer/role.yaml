@@ -1,0 +1,21 @@
+id: reviewer
+version: 0.1.0
+summary: "Reads a diff against its acceptance criteria and reports findings. Writes nothing."
+capabilities: ["read_repo", "review_diff"]
+tools: ["read_file"]
+permitted_paths: ["src", "tests", "docs"]
+prohibited_writes: ["**"]
+network: none
+sandbox: workspace
+provider_tier: local
+limits:
+  max_turns: 20
+  timeout_seconds: 900
+  max_tokens: 300000
+approval_thresholds:
+  max_files_changed: 0
+  max_lines_changed: 0
+input_schema: agents/catalog/task.schema.json
+output_schema: agents/catalog/reviewer/output.schema.json
+evidence: [test_log, check_result]
+dependencies: ["builder"]

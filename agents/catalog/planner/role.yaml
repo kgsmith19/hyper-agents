@@ -1,0 +1,21 @@
+id: planner
+version: 0.1.0
+summary: "Turns the owner's task into an ordered, checkable plan. Reads the repo; writes nothing."
+capabilities: ["read_repo", "propose_plan"]
+tools: ["read_file"]
+permitted_paths: ["docs", "src", "tests"]
+prohibited_writes: ["**"]
+network: none
+sandbox: workspace
+provider_tier: local
+limits:
+  max_turns: 20
+  timeout_seconds: 900
+  max_tokens: 300000
+approval_thresholds:
+  max_files_changed: 0
+  max_lines_changed: 0
+input_schema: agents/catalog/task.schema.json
+output_schema: agents/catalog/planner/output.schema.json
+evidence: [test_log, check_result]
+dependencies: []
