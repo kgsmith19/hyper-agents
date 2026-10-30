@@ -22,6 +22,9 @@ dev = [
   "pyyaml>=6,<7",
   "types-pyyaml>=6,<7",
 ]
+openhands = [
+  "openhands-sdk>=1.0.0a1,<2",
+]
 
 [build-system]
 requires = ["hatchling>=1.25"]
