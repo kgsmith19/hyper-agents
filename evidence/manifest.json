@@ -1,10 +1,10 @@
 {
-  "version": "1.0",
+  "version": "1.1",
   "generated": "2026-10-30",
   "claims": [
     {
       "issue": "P03-2",
-      "claim": "OpenHandsExecutor adapter with fail-closed compatibility probe",
+      "claim": "OpenHandsExecutor adapter with fail-closed import probe and verified license provenance",
       "risk_tier": "R2",
       "verification_gates": [
         {
@@ -12,40 +12,45 @@
           "description": "openhands-sdk pinned with version-scoped license provenance",
           "status": "CONFIRMED",
           "evidence": [
-            "pyproject.toml: openhands-sdk>=1.59.0,<2, openhands-workspace>=1.59.0,<2",
-            "ci/licenses.py: PROVENANCE_MANIFEST with openhands-sdk==1.59.0 (MIT), openhands-workspace==1.59.0 (MIT), agent-client-protocol==0.12.1 (Apache-2.0)",
-            "uv.lock: regenerated with 164 packages (added 155 new packages)"
+            "pyproject.toml: openhands-sdk==1.58.2, openhands-workspace==1.58.2",
+            "uv.lock: openhands-sdk 1.58.2, openhands-workspace 1.58.2, openhands-agent-server 1.49.5, agent-client-protocol 0.12.1; uv sync --locked passes",
+            "ci/licenses.py PROVENANCE_MANIFEST: MIT for the three openhands packages (LICENSE at upstream tag v1.58.2 in OpenHands/software-agent-sdk); Apache-2.0 for agent-client-protocol 0.12.1 (LICENSE in the wheel)",
+            "tests/conformance/test_license_provenance.py: verified pins accepted; unverified 1.59.0 and 1.58.0 rejected; every locked provenanced package has a record",
+            "PyPI JSON for all four packages has no license field, so provenance comes from the LICENSE files above, not metadata"
           ]
         },
         {
           "gate": "AC2",
-          "description": "Fail-closed when SDK absent; imports validated",
+          "description": "Fail-closed when the SDK import contract is not met; run() never returns fake success",
           "status": "CONFIRMED",
           "evidence": [
-            "src/hyper_agents/adapters/openhands_executor.py: imports 4 critical symbols from openhands.sdk.subagent.registry",
-            "OpenHandsExecutor.run() raises NotImplementedError (fail-closed, not fake success)",
-            "tests/integration/test_openhands_probe.py::test_probe_validates_required_imports: PASSED",
-            "tests/integration/test_openhands_probe.py::test_executor_contract_with_port: PASSED"
+            "src/hyper_agents/adapters/openhands_executor.py imports register_agent, agent_definition_to_factory, get_agent_factory, AgentFactory from openhands.sdk.subagent.registry at import time; a missing symbol raises ImportError",
+            "OpenHandsExecutor.run() raises NotImplementedError",
+            "tests/integration/test_openhands_probe.py::test_probe_validates_required_imports: passes",
+            "tests/integration/test_openhands_probe.py::test_executor_contract_with_port: passes",
+            "tests/integration/test_openhands_probe.py::test_executor_is_not_fake: passes"
           ]
         },
         {
           "gate": "AC3",
-          "description": "Verified imports only; linting clean",
+          "description": "Verified imports only; format, lint and strict types clean",
           "status": "CONFIRMED",
           "evidence": [
-            "uv run ruff check .: No violations",
-            "uv run pyright: All type checks pass in strict mode",
-            "95 tests pass (88 existing + 7 new probe tests)"
+            "uv run ruff format --check . : 54 files already formatted",
+            "uv run ruff check . : All checks passed",
+            "uv run pyright : 0 errors",
+            "uv run pytest : 95 passed",
+            "uv run --with pip-licenses pip-licenses --format=json | python ci/licenses.py : licenses: ok"
           ]
         },
         {
           "gate": "AC4",
-          "description": "One real tool invocation traced with Docker & key",
-          "status": "DEFERRED_TO_CI",
+          "description": "One real tool invocation traced with Docker and a key",
+          "status": "OPEN",
           "evidence": [
-            "tests/integration/test_openhands_probe.py: 4 Docker-marked tests for CI integration",
-            "@pytest.mark.requires_docker: Docker-required tests run in CI (self-hosted runner), skipped in cloud",
-            "Cloud sessions validate adapter contract (AC1-AC3); Docker execution validated in CI per Stage 61b"
+            "No test in this PR executes OpenHands against Docker. The earlier requires_docker placeholders only asserted isinstance and were removed.",
+            "The requires_docker marker and its skip rule (tests/conftest.py) are in place for a future real Docker test.",
+            "No self-hosted Docker CI job exists in this PR. AC4 stays open until one is added or the owner narrows the claim."
           ]
         }
       ]
@@ -57,14 +62,16 @@
     "skipped": 0,
     "failed": 0,
     "new_tests": 7,
-    "new_tests_marked_requires_docker": 4
+    "docker_tests": 0
   },
-  "files_modified": [
-    "src/hyper_agents/adapters/openhands_executor.py (created)",
-    "tests/integration/test_openhands_probe.py (created)",
-    "tests/conftest.py (created)",
-    "pyproject.toml (updated)",
-    "uv.lock (regenerated)",
-    "ci/licenses.py (updated)"
+  "files_changed": [
+    "src/hyper_agents/adapters/openhands_executor.py (new)",
+    "tests/integration/test_openhands_probe.py (new)",
+    "tests/conformance/test_license_provenance.py (new)",
+    "tests/conftest.py (new)",
+    "pyproject.toml",
+    "uv.lock",
+    "ci/licenses.py",
+    "evidence/manifest.json (new)"
   ]
 }

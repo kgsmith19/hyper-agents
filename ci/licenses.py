@@ -2,9 +2,9 @@
 
 Reads `pip-licenses --format=json` on stdin. Our own package is skipped.
 
-Version-scoped provenance records override PyPI metadata when packages have
-blank license fields. This allows controlled dependency upgrades with explicit
-license validation before changing version pins.
+PROVENANCE_MANIFEST records the license of an exact name==version, verified against
+upstream source. It overrides PyPI metadata, which is blank for these packages. A
+different version has no record, so it fails until someone verifies it.
 """
 
 import json
@@ -14,25 +14,21 @@ DENY = ("GPL", "AGPL", "SSPL", "EUPL")
 ALLOW_LGPL = False
 
 PROVENANCE_MANIFEST = {
-    "openhands-sdk==1.59.0": {
+    "openhands-sdk==1.58.2": {
         "license": "MIT",
-        "source": "upstream",
-        "verified": "2026-10-30",
+        "source": "https://github.com/OpenHands/software-agent-sdk/blob/v1.58.2/LICENSE",
     },
-    "openhands-workspace==1.59.0": {
+    "openhands-workspace==1.58.2": {
         "license": "MIT",
-        "source": "upstream",
-        "verified": "2026-10-30",
+        "source": "https://github.com/OpenHands/software-agent-sdk/blob/v1.58.2/LICENSE",
     },
     "openhands-agent-server==1.49.5": {
         "license": "MIT",
-        "source": "upstream",
-        "verified": "2026-10-30",
+        "source": "https://github.com/OpenHands/software-agent-sdk/blob/v1.58.2/LICENSE",
     },
     "agent-client-protocol==0.12.1": {
         "license": "Apache-2.0",
-        "source": "upstream",
-        "verified": "2026-10-30",
+        "source": "LICENSE inside the 0.12.1 wheel (dist-info/licenses/LICENSE)",
     },
 }
 
@@ -46,10 +42,9 @@ def problems(rows: list[dict[str, str]]) -> list[str]:
         if name == "hyper-agents":
             continue
 
-        # Check version-scoped provenance manifest first
-        provenance_key = f"{name}=={version}"
-        if provenance_key in PROVENANCE_MANIFEST:
-            license_ = PROVENANCE_MANIFEST[provenance_key]["license"]
+        record = PROVENANCE_MANIFEST.get(f"{name}=={version}")
+        if record is not None:
+            license_ = record["license"]
 
         upper = license_.upper()
         if upper in ("", "UNKNOWN"):
@@ -60,16 +55,6 @@ def problems(rows: list[dict[str, str]]) -> list[str]:
 
 
 def main() -> int:
-    # Negative-control test: verify audit rejects incompatible version
-    # Only versions explicitly in PROVENANCE_MANIFEST pass; others fail
-    test_data = [{"Name": "openhands-sdk", "Version": "1.58.0", "License": "UNKNOWN"}]
-    test_issues = problems(test_data)
-    if not test_issues or "openhands-sdk: license unknown" not in test_issues:
-        raise AssertionError(
-            "Negative control failed: audit should reject openhands-sdk==1.58.0. "
-            "Only version 1.59.0 is in PROVENANCE_MANIFEST."
-        )
-
     bad = problems(json.load(sys.stdin))
     print("\n".join(bad) or "licenses: ok")
     return 1 if bad else 0
