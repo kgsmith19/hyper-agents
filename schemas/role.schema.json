@@ -1,0 +1,196 @@
+{
+  "$defs": {
+    "ApprovalThresholds": {
+      "additionalProperties": false,
+      "properties": {
+        "max_files_changed": {
+          "maximum": 500,
+          "minimum": 0,
+          "title": "Max Files Changed",
+          "type": "integer"
+        },
+        "max_lines_changed": {
+          "maximum": 100000,
+          "minimum": 0,
+          "title": "Max Lines Changed",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_files_changed",
+        "max_lines_changed"
+      ],
+      "title": "ApprovalThresholds",
+      "type": "object"
+    },
+    "Capability": {
+      "enum": [
+        "read_repo",
+        "write_repo",
+        "run_checks",
+        "propose_plan",
+        "review_diff",
+        "verify_criteria",
+        "repair_code"
+      ],
+      "title": "Capability",
+      "type": "string"
+    },
+    "Limits": {
+      "additionalProperties": false,
+      "properties": {
+        "max_tokens": {
+          "maximum": 2000000,
+          "minimum": 1,
+          "title": "Max Tokens",
+          "type": "integer"
+        },
+        "max_turns": {
+          "maximum": 200,
+          "minimum": 1,
+          "title": "Max Turns",
+          "type": "integer"
+        },
+        "timeout_seconds": {
+          "maximum": 7200,
+          "minimum": 1,
+          "title": "Timeout Seconds",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_turns",
+        "timeout_seconds",
+        "max_tokens"
+      ],
+      "title": "Limits",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "approval_thresholds": {
+      "$ref": "#/$defs/ApprovalThresholds"
+    },
+    "capabilities": {
+      "items": {
+        "$ref": "#/$defs/Capability"
+      },
+      "title": "Capabilities",
+      "type": "array"
+    },
+    "dependencies": {
+      "default": [],
+      "items": {
+        "pattern": "^[a-z][a-z0-9-]{1,31}$",
+        "type": "string"
+      },
+      "title": "Dependencies",
+      "type": "array"
+    },
+    "evidence": {
+      "default": [],
+      "items": {
+        "enum": [
+          "test_log",
+          "diff",
+          "check_result"
+        ],
+        "type": "string"
+      },
+      "title": "Evidence",
+      "type": "array"
+    },
+    "id": {
+      "pattern": "^[a-z][a-z0-9-]{1,31}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "input_schema": {
+      "title": "Input Schema",
+      "type": "string"
+    },
+    "limits": {
+      "$ref": "#/$defs/Limits"
+    },
+    "network": {
+      "default": "none",
+      "enum": [
+        "none",
+        "allowlist"
+      ],
+      "title": "Network",
+      "type": "string"
+    },
+    "output_schema": {
+      "title": "Output Schema",
+      "type": "string"
+    },
+    "permitted_paths": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Permitted Paths",
+      "type": "array"
+    },
+    "prohibited_writes": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Prohibited Writes",
+      "type": "array"
+    },
+    "provider_tier": {
+      "default": "local",
+      "enum": [
+        "local",
+        "standard"
+      ],
+      "title": "Provider Tier",
+      "type": "string"
+    },
+    "sandbox": {
+      "default": "workspace",
+      "enum": [
+        "workspace",
+        "container"
+      ],
+      "title": "Sandbox",
+      "type": "string"
+    },
+    "summary": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Summary",
+      "type": "string"
+    },
+    "tools": {
+      "default": [],
+      "items": {
+        "pattern": "^[a-z][a-z_]{0,39}$",
+        "type": "string"
+      },
+      "title": "Tools",
+      "type": "array"
+    },
+    "version": {
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "version",
+    "summary",
+    "capabilities",
+    "limits",
+    "approval_thresholds",
+    "input_schema",
+    "output_schema"
+  ],
+  "title": "RoleManifest",
+  "type": "object"
+}
