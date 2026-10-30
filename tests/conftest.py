@@ -1,18 +1,19 @@
 """Pytest configuration: markers, fixtures, and skip logic."""
 
 import shutil
+from typing import Any
 
 import pytest
 
 
-def pytest_configure(config):
+def pytest_configure(config: Any) -> None:
     """Register custom markers."""
     config.addinivalue_line(
         "markers", "requires_docker: mark test as requiring Docker; skipped in cloud sessions"
     )
 
 
-def pytest_collection_modifyitems(config, items):
+def pytest_collection_modifyitems(config: Any, items: Any) -> None:
     """Skip requires_docker tests when Docker is unavailable."""
     docker_available = shutil.which("docker") is not None
 
