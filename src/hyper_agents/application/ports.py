@@ -20,3 +20,9 @@ class RunStorePort(Protocol):
 
 class ClockPort(Protocol):
     def now_iso(self) -> str: ...
+
+
+class ManifestParserPort(Protocol):
+    def parse(self, text: str) -> object:
+        """Parse one manifest document. Raise PolicyDenied on anything unsafe."""
+        ...
