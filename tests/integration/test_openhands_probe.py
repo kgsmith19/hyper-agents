@@ -20,16 +20,17 @@ def test_probe_fails_gracefully_when_sdk_absent(monkeypatch: pytest.MonkeyPatch)
 
     Verify that importing or instantiating the executor without the SDK
     raises ImportError with a clear, actionable message (never silent success).
+    Per ADR 0001, fail-closed is non-negotiable: no fake success.
     """
     # Hide the openhands module (simulate absence).
     import sys
     from typing import Any
 
-    openhands_module = sys.modules.pop("openhands", None)
+    openhands_sdk_module = sys.modules.pop("openhands_sdk", None)
 
     def mock_import(name: str, *args: Any, **kwargs: Any) -> Any:
-        if name == "openhands":
-            raise ImportError("No module named 'openhands'")
+        if name == "openhands_sdk":
+            raise ImportError("No module named 'openhands_sdk'")
         return __import__(name, *args, **kwargs)
 
     try:
@@ -37,37 +38,88 @@ def test_probe_fails_gracefully_when_sdk_absent(monkeypatch: pytest.MonkeyPatch)
         monkeypatch.setattr("builtins.__import__", mock_import)
 
         # Instantiation must raise ImportError, not succeed silently.
+        # This is a fail-closed requirement per ADR 0001.
         with pytest.raises(ImportError, match="openhands-sdk not installed"):
             OpenHandsExecutor()
     finally:
         # Restore.
-        if openhands_module is not None:
-            sys.modules["openhands"] = openhands_module
+        if openhands_sdk_module is not None:
+            sys.modules["openhands_sdk"] = openhands_sdk_module
 
 
 @pytest.mark.requires_docker
-def test_one_tool_invocation_traced() -> None:
-    """AC4: One real tool invocation traced (requires Docker and openhands-sdk).
+def test_openhands_required_imports_validated() -> None:
+    """AC3: OpenHands executor validates required imports per ADR 0001.
 
-    Integration test that validates OpenHands executor with a real tool call.
-    Requires Docker to be running and openhands-sdk installed; skipped in cloud.
-    Cloud sessions test the adapter contract (AC2, AC3 via code review and imports);
-    Docker integration is validated in self-hosted CI and at release gates.
+    Verify that the executor checks for the required imports:
+    - register_agent, agent_definition_to_factory, get_agent_factory, AgentFactory
+    from openhands_sdk.subagent.registry.
 
-    Note: This test is skipped when Docker is unavailable.
-    A dry run (no real credentials) checks adapter structure and instrumentation.
+    This test requires openhands-sdk to be installed; skipped in cloud.
     """
-    # This test only runs when Docker is available (marked requires_docker).
-    # AC3 (verified imports, no hidden dependencies) is satisfied by:
-    # - Code linting (ruff check passes in CI).
-    # - Type checking (pyright strict mode).
-    # - Import-only validation (openhands imported, not executed).
+    # Instantiation validates all required imports.
+    executor = OpenHandsExecutor()
+    assert executor is not None
+
+    # Verify required imports are accessible.
+    from openhands_sdk.subagent.registry import (  # type: ignore
+        AgentFactory,  # type: ignore
+        agent_definition_to_factory,  # type: ignore
+        get_agent_factory,  # type: ignore
+        register_agent,  # type: ignore
+    )
+
+    assert callable(register_agent)  # type: ignore
+    assert callable(agent_definition_to_factory)  # type: ignore
+    assert callable(get_agent_factory)  # type: ignore
+    assert AgentFactory is not None
+
+
+@pytest.mark.requires_docker
+def test_probe_fails_when_required_imports_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Fail-closed: probe detects missing required imports.
+
+    Per ADR 0001, the adapter must fail closed if required imports are absent.
+    Verify that a missing required import raises ImportError at instantiation.
+    """
+    # Hide a required import to simulate incompatibility.
+    from typing import Any
+
+    original_import = __builtins__.__dict__.get("__import__")
+
+    def mock_import(name: str, *args: Any, **kwargs: Any) -> Any:
+        # Block the AgentFactory import to simulate incompatibility.
+        if name == "openhands_sdk.subagent.registry":
+            raise ImportError("AgentFactory not found in registry (incompatible version)")
+        return __import__(name, *args, **kwargs)
+
+    try:
+        monkeypatch.setattr("builtins.__import__", mock_import)
+
+        # Instantiation must fail, not succeed silently.
+        with pytest.raises(ImportError, match="required import"):
+            OpenHandsExecutor()
+    finally:
+        # Restore.
+        if original_import:
+            __builtins__.__dict__["__import__"] = original_import
+
+
+@pytest.mark.requires_docker
+def test_executor_fails_on_unimplemented_run() -> None:
+    """AC4: Executor fails closed (not implemented) until P03-3.
+
+    P03-2 validates import structure and dependencies.
+    P03-3 implements the actual tool invocation schema and OpenHands orchestration.
+
+    Verify that calling run() raises NotImplementedError (fail-closed)
+    rather than returning fabricated success.
+    """
     executor = OpenHandsExecutor()
 
-    # Placeholder: real tool invocation in P03-3 (tool schema).
-    # For now, verify the executor accepts requests and returns results.
-    result = executor.run({"task": "test"})
-
-    assert result is not None
-    assert isinstance(result, dict)
-    assert "status" in result
+    # The run() method is not implemented until P03-3.
+    # Fail-closed requirement (ADR 0001): never fake success.
+    with pytest.raises(NotImplementedError, match="Tool invocation schema"):
+        executor.run({"task": "test"})
