@@ -8,10 +8,10 @@ If any import fails, the module cannot be loaded, triggering the fail-closed pro
 """
 
 from openhands.sdk.subagent.registry import (
-    register_agent,
+    AgentFactory,
     agent_definition_to_factory,
     get_agent_factory,
-    AgentFactory,
+    register_agent,
 )
 
 from hyper_agents.application.ports import ExecutorPort
@@ -50,9 +50,9 @@ class OpenHandsExecutor(ExecutorPort):
 
 
 __all__ = [
+    "AgentFactory",
     "OpenHandsExecutor",
-    "register_agent",
     "agent_definition_to_factory",
     "get_agent_factory",
-    "AgentFactory",
+    "register_agent",
 ]

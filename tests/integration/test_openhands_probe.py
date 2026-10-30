@@ -14,10 +14,10 @@ def test_probe_validates_required_imports():
     """Verify all 4 critical imports from openhands.sdk.subagent.registry."""
     # If any import fails, the module cannot be loaded, triggering fail-closed
     from openhands.sdk.subagent.registry import (
-        register_agent,
+        AgentFactory,
         agent_definition_to_factory,
         get_agent_factory,
-        AgentFactory,
+        register_agent,
     )
 
     # Verify each is callable/instantiable as expected

@@ -24,6 +24,11 @@ PROVENANCE_MANIFEST = {
         "source": "upstream",
         "verified": "2026-10-30",
     },
+    "openhands-agent-server==1.49.5": {
+        "license": "MIT",
+        "source": "upstream",
+        "verified": "2026-10-30",
+    },
     "agent-client-protocol==0.12.1": {
         "license": "Apache-2.0",
         "source": "upstream",
@@ -57,9 +62,7 @@ def problems(rows: list[dict[str, str]]) -> list[str]:
 def main() -> int:
     # Negative-control test: verify audit rejects incompatible version
     # Only versions explicitly in PROVENANCE_MANIFEST pass; others fail
-    test_data = [
-        {"Name": "openhands-sdk", "Version": "1.58.0", "License": "UNKNOWN"}
-    ]
+    test_data = [{"Name": "openhands-sdk", "Version": "1.58.0", "License": "UNKNOWN"}]
     test_issues = problems(test_data)
     if not test_issues or "openhands-sdk: license unknown" not in test_issues:
         raise AssertionError(

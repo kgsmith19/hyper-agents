@@ -8,8 +8,7 @@ import pytest
 def pytest_configure(config):
     """Register custom markers."""
     config.addinivalue_line(
-        "markers",
-        "requires_docker: mark test as requiring Docker; skipped in cloud sessions"
+        "markers", "requires_docker: mark test as requiring Docker; skipped in cloud sessions"
     )
 
 
