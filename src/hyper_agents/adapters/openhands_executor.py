@@ -6,8 +6,6 @@ Docker availability is not checked at import time; integration tests require Doc
 explicitly. Cloud sessions test the adapter contract via stubs.
 """
 
-from typing import Any
-
 from hyper_agents.application.ports import ExecutorPort
 
 
@@ -21,7 +19,7 @@ class OpenHandsExecutor(ExecutorPort):
         Does not check Docker availability; integration tests require Docker.
         """
         try:
-            import openhands  # noqa: F401, unused
+            import openhands  # type: ignore  # noqa: F401
         except ImportError as e:
             raise ImportError(
                 "openhands-sdk not installed. "

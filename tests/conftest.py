@@ -7,6 +7,7 @@ Cloud sessions test adapter contract via stubs.
 Self-hosted CI and local dev test full Docker integration.
 """
 
+import shutil
 import subprocess
 
 import pytest
@@ -21,21 +22,22 @@ def pytest_configure(config: pytest.Config) -> None:
 
 def docker_available() -> bool:
     """Check if Docker is available and running."""
+    docker_path = shutil.which("docker")
+    if not docker_path:
+        return False
     try:
-        subprocess.run(
-            ["docker", "version"],
+        subprocess.run(  # noqa: S603
+            [docker_path, "version"],
             check=True,
             capture_output=True,
             timeout=5,
         )
         return True
-    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
         return False
 
 
-def pytest_collection_modifyitems(
-    config: pytest.Config, items: list[pytest.Item]
-) -> None:
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     """Skip Docker-dependent tests when Docker is unavailable."""
     skip_docker = pytest.mark.skip(reason="Docker required (unavailable in this environment)")
     if not docker_available():

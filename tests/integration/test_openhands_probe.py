@@ -23,18 +23,18 @@ def test_probe_fails_gracefully_when_sdk_absent(monkeypatch: pytest.MonkeyPatch)
     """
     # Hide the openhands module (simulate absence).
     import sys
+    from typing import Any
 
     openhands_module = sys.modules.pop("openhands", None)
+
+    def mock_import(name: str, *args: Any, **kwargs: Any) -> Any:
+        if name == "openhands":
+            raise ImportError("No module named 'openhands'")
+        return __import__(name, *args, **kwargs)
+
     try:
         # Block the import.
-        monkeypatch.setattr(
-            "builtins.__import__",
-            lambda name, *args, **kwargs: (_ for _ in ()).throw(
-                ImportError("No module named 'openhands'")
-            )
-            if name == "openhands"
-            else __import__(name, *args, **kwargs),
-        )
+        monkeypatch.setattr("builtins.__import__", mock_import)
 
         # Instantiation must raise ImportError, not succeed silently.
         with pytest.raises(ImportError, match="openhands-sdk not installed"):
