@@ -1,0 +1,21 @@
+id: builder
+version: 0.1.0
+summary: "Implements one planned change with tests, inside its permitted paths. Never publishes."
+capabilities: ["read_repo", "write_repo", "run_checks", "repair_code"]
+tools: ["read_file", "write_file", "run_tests"]
+permitted_paths: ["src", "tests", "docs"]
+prohibited_writes: [".github", "agents"]
+network: none
+sandbox: workspace
+provider_tier: local
+limits:
+  max_turns: 60
+  timeout_seconds: 1800
+  max_tokens: 600000
+approval_thresholds:
+  max_files_changed: 10
+  max_lines_changed: 400
+input_schema: agents/catalog/task.schema.json
+output_schema: agents/catalog/builder/output.schema.json
+evidence: [test_log, check_result]
+dependencies: ["planner"]

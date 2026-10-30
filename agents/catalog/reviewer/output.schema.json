@@ -1,0 +1,39 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "findings": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "claim": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "blocking",
+              "advisory"
+            ]
+          }
+        },
+        "required": [
+          "severity",
+          "claim"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "verdict": {
+      "enum": [
+        "approve",
+        "request_changes"
+      ]
+    }
+  },
+  "required": [
+    "verdict",
+    "findings"
+  ],
+  "type": "object"
+}

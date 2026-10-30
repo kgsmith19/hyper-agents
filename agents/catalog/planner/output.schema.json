@@ -1,0 +1,36 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "steps": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "check": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "claim": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "id": {
+            "pattern": "^S[0-9]{1,3}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "claim",
+          "check"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    }
+  },
+  "required": [
+    "steps"
+  ],
+  "type": "object"
+}
