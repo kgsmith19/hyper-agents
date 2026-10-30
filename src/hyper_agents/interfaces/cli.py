@@ -40,9 +40,8 @@ def doctor_report() -> dict[str, object]:
         "python": platform.python_version(),
         "python_ok": sys.version_info >= (3, 12),
         "docker_cli": shutil.which("docker") is not None,
-        # The executor adapter arrives in P03; until then no real worker can run.
-        "openhands_sdk": sdk or "not installed (executor arrives in P03)",
-        "real_workers_available": False,
+        "openhands_sdk": sdk or "not installed (P03 requires openhands-sdk)",
+        "real_workers_available": sdk is not None,
     }
 
 
