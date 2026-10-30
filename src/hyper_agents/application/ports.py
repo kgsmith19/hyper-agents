@@ -5,7 +5,7 @@ implement these in hyper_agents.adapters. Declared now so the dependency
 direction is fixed before any adapter exists; implemented from P03 onward.
 """
 
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from hyper_agents.domain.events import EventEnvelope
 
@@ -25,4 +25,11 @@ class ClockPort(Protocol):
 class ManifestParserPort(Protocol):
     def parse(self, text: str) -> object:
         """Parse one manifest document. Raise PolicyDenied on anything unsafe."""
+        ...
+
+
+@runtime_checkable
+class ExecutorPort(Protocol):
+    def run(self, request: object) -> object:
+        """Run a task and return a result. The request and result are adapter-specific."""
         ...
