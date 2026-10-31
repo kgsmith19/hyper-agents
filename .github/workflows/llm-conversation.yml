@@ -1,0 +1,38 @@
+name: LLM conversation (AC4 key tier)
+
+# Runs one real LLM conversation in the pinned agent server. Not a PR check: the key
+# is a repository secret, and pull-request code could read it. Runs on pushes to main
+# and on manual dispatch only.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  UV_VERSION: "0.11.32"
+
+jobs:
+  llm-conversation:
+    name: One real conversation in the pinned agent server
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - run: python -m pip install "uv==${UV_VERSION}"
+      - run: uv sync --locked
+      - name: Require the key (a skipped test must not look green)
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+        run: test -n "$LLM_API_KEY" || { echo "LLM_API_KEY repository secret is not set"; exit 1; }
+      - name: Run the key-tier test
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+        run: uv run pytest tests/integration/test_llm_conversation.py -v -rs
