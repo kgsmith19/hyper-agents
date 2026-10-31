@@ -51,8 +51,8 @@ sleep 8 && docker info --format '{{.ServerVersion}}'
 ## Open issues
 
 - The key-free tier of AC4 (start `DockerWorkspace`, check `/health`) cannot run in this sandbox
-  because of the nofile limit above. It needs a runner whose hard nofile limit is at least 65536.
-  GitHub-hosted `ubuntu-latest` runners are expected to have a higher limit, but that is not verified.
+  because of the nofile limit above. It passes on GitHub-hosted `ubuntu-latest`: run
+  https://github.com/kgsmith19/hyper-agents/actions/runs/41154276833 (2026-10-31), 97 passed, 0 skipped.
 - The LLM-key tier of AC4 needs a repository secret. It must not run on forks or untrusted PRs.
 
 ## Checklist for the next session
@@ -60,4 +60,5 @@ sleep 8 && docker info --format '{{.ServerVersion}}'
 1. `docker info` shows a server version. If not, start the daemon as above.
 2. `ulimit -Hn` is still 20000 (or the value the daemon was started with).
 3. Pull only `ghcr.io` images, or retry Docker Hub later.
-4. For the SDK path, use a runner with nofile hard limit >= 65536, then run the workspace test there.
+4. Run the SDK workspace test (`tests/integration/test_docker_workspace.py`) on GitHub CI, not here. It fails
+   locally with the nofile error, and it passes on hosted runners.
