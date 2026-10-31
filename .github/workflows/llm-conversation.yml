@@ -1,0 +1,39 @@
+name: LLM conversation (AC4 key tier)
+
+# Runs one real LLM conversation in the pinned agent server. Not a PR check: the Infisical
+# credentials are repository secrets, and pull-request code could read them. Runs on pushes
+# to main and on manual dispatch only. The LLM key is read from Infisical (/dev/, prod) at
+# run time and masked; it is never stored in GitHub.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  UV_VERSION: "0.11.32"
+
+jobs:
+  llm-conversation:
+    name: One real conversation in the pinned agent server
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - run: python -m pip install "uv==${UV_VERSION}"
+      - run: uv sync --locked
+      - name: Fetch the OpenAI dev key from Infisical
+        env:
+          INFISICAL_CLIENT_ID: ${{ secrets.INFISICAL_CLIENT_ID }}
+          INFISICAL_CLIENT_SECRET: ${{ secrets.INFISICAL_CLIENT_SECRET }}
+          INFISICAL_PROJECT_ID: ${{ secrets.INFISICAL_PROJECT_ID }}
+        run: python3 ci/fetch_infisical_secret.py DEV_OPENAI_API_KEY LLM_API_KEY
+      - name: Run the key-tier test
+        run: uv run pytest tests/integration/test_llm_conversation.py -v -rs

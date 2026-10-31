@@ -1,0 +1,77 @@
+{
+  "version": "1.1",
+  "generated": "2026-10-30",
+  "claims": [
+    {
+      "issue": "P03-2",
+      "claim": "OpenHandsExecutor adapter with fail-closed import probe and verified license provenance",
+      "risk_tier": "R2",
+      "verification_gates": [
+        {
+          "gate": "AC1",
+          "description": "openhands-sdk pinned with version-scoped license provenance",
+          "status": "CONFIRMED",
+          "evidence": [
+            "pyproject.toml: openhands-sdk==1.58.2, openhands-workspace==1.58.2",
+            "uv.lock: openhands-sdk 1.58.2, openhands-workspace 1.58.2, openhands-agent-server 1.49.5, agent-client-protocol 0.12.1; uv sync --locked passes",
+            "ci/licenses.py PROVENANCE_MANIFEST: MIT for the three openhands packages (LICENSE at upstream tag v1.58.2 in OpenHands/software-agent-sdk); Apache-2.0 for agent-client-protocol 0.12.1 (LICENSE in the wheel)",
+            "tests/conformance/test_license_provenance.py: verified pins accepted; unverified 1.59.0 and 1.58.0 rejected; every locked provenanced package has a record",
+            "PyPI JSON for all four packages has no license field, so provenance comes from the LICENSE files above, not metadata"
+          ]
+        },
+        {
+          "gate": "AC2",
+          "description": "Fail-closed when the SDK import contract is not met; run() never returns fake success",
+          "status": "CONFIRMED",
+          "evidence": [
+            "src/hyper_agents/adapters/openhands_executor.py imports register_agent, agent_definition_to_factory, get_agent_factory, AgentFactory from openhands.sdk.subagent.registry at import time; a missing symbol raises ImportError",
+            "OpenHandsExecutor.run() raises NotImplementedError",
+            "tests/integration/test_openhands_probe.py::test_probe_validates_required_imports: passes",
+            "tests/integration/test_openhands_probe.py::test_executor_contract_with_port: passes",
+            "tests/integration/test_openhands_probe.py::test_executor_is_not_fake: passes"
+          ]
+        },
+        {
+          "gate": "AC3",
+          "description": "Verified imports only; format, lint and strict types clean",
+          "status": "CONFIRMED",
+          "evidence": [
+            "uv run ruff format --check . : 54 files already formatted",
+            "uv run ruff check . : All checks passed",
+            "uv run pyright : 0 errors",
+            "uv run pytest : 95 passed",
+            "uv run --with pip-licenses pip-licenses --format=json | python ci/licenses.py : licenses: ok"
+          ]
+        },
+        {
+          "gate": "AC4",
+          "description": "One real tool invocation traced with Docker and a key",
+          "status": "PARTIAL",
+          "evidence": [
+            "Key-free tier CONFIRMED: tests/integration/test_docker_workspace.py starts DockerWorkspace with ghcr.io/openhands/agent-server:1.58.2-python and asserts /health returns ok; a missing image tag raises. Both passed on the hosted runner: https://github.com/kgsmith19/hyper-agents/actions/runs/41154276833/job/124397520262 (97 passed, 0 skipped).",
+            "LLM-key tier OPEN: one real conversation against an LLM needs a repository secret. Not in this PR."
+          ]
+        }
+      ]
+    }
+  ],
+  "test_summary": {
+    "total_tests": 97,
+    "passed": 97,
+    "skipped": 0,
+    "failed": 0,
+    "new_tests": 9,
+    "docker_tests": 2
+  },
+  "files_changed": [
+    "src/hyper_agents/adapters/openhands_executor.py (new)",
+    "tests/integration/test_openhands_probe.py (new)",
+    "tests/conformance/test_license_provenance.py (new)",
+    "tests/conftest.py (new)",
+    "tests/integration/test_docker_workspace.py (new)",
+    "pyproject.toml",
+    "uv.lock",
+    "ci/licenses.py",
+    "evidence/manifest.json (new)"
+  ]
+}

@@ -8,6 +8,8 @@ dependencies = [
   "pydantic>=2.9,<3",
   "pyyaml>=6.0.3",
   "typer>=0.12,<1",
+  "openhands-sdk==1.58.2",
+  "openhands-workspace==1.58.2",
 ]
 
 [project.scripts]
