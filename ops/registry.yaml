@@ -1,0 +1,70 @@
+# Typed operation registry for the ops broker. Changing this file is a reviewed PR.
+# Tiers: R0 read (auto), R1 reversible write (dry-run then apply), R2 secret or live write
+# (requires the `ops-r2` GitHub Environment with the owner as reviewer).
+# Secret values are never parameters. A secret is referenced by Infisical path and name.
+
+ops:
+  - id: infisical.secret.exists
+    adapter: infisical
+    action: exists
+    tier: R0
+    params:
+      - name: source_path
+        pattern: '^/[A-Za-z0-9_./-]{0,128}$'
+      - name: source_name
+        pattern: '^[A-Z][A-Z0-9_]{2,63}$'
+
+  - id: infisical.secret.list_names
+    adapter: infisical
+    action: list_names
+    tier: R0
+    params:
+      - name: source_path
+        pattern: '^/[A-Za-z0-9_./-]{0,128}$'
+
+  - id: github.secret.list
+    adapter: github
+    action: list_secrets
+    tier: R0
+    params:
+      - name: repo
+        enum: [kgsmith19/hyper-agents, kgsmith19/agent-extensions]
+
+  - id: github.variable.set
+    adapter: github
+    action: set_variable
+    tier: R1
+    params:
+      - name: repo
+        enum: [kgsmith19/hyper-agents, kgsmith19/agent-extensions]
+      - name: name
+        pattern: '^[A-Z][A-Z0-9_]{2,63}$'
+      - name: value
+        pattern: '^[\x20-\x7E]{1,256}$'
+        max_length: 256
+
+  - id: github.secret.set
+    adapter: github
+    action: set_secret
+    tier: R2
+    gate: ops-r2
+    params:
+      - name: repo
+        enum: [kgsmith19/hyper-agents, kgsmith19/agent-extensions]
+      - name: name
+        pattern: '^[A-Z][A-Z0-9_]{2,63}$'
+      - name: source_path
+        pattern: '^/[A-Za-z0-9_./-]{0,128}$'
+      - name: source_name
+        pattern: '^[A-Z][A-Z0-9_]{2,63}$'
+
+  - id: github.secret.delete
+    adapter: github
+    action: delete_secret
+    tier: R2
+    gate: ops-r2
+    params:
+      - name: repo
+        enum: [kgsmith19/hyper-agents, kgsmith19/agent-extensions]
+      - name: name
+        pattern: '^[A-Z][A-Z0-9_]{2,63}$'
