@@ -1,6 +1,7 @@
 """LLM-key tier of AC4: one real conversation in the pinned agent server (needs Docker and a key).
 
-Skipped unless LLM_API_KEY is set. CI passes it from a repository secret on same-repo PRs only.
+Skipped unless LLM_API_KEY is set. The push/dispatch workflow fetches it from Infisical; see
+.github/workflows/llm-conversation.yml.
 """
 
 import os
@@ -12,7 +13,7 @@ from openhands.workspace import DockerWorkspace
 from pydantic import SecretStr
 
 PINNED_IMAGE = "ghcr.io/openhands/agent-server:1.58.2-python"
-DEFAULT_MODEL = "anthropic/claude-haiku-4-5-20251001"
+DEFAULT_MODEL = "gpt-5.6"
 
 api_key = os.environ.get("LLM_API_KEY")
 
