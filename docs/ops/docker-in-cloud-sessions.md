@@ -53,7 +53,9 @@ sleep 8 && docker info --format '{{.ServerVersion}}'
 - The key-free tier of AC4 (start `DockerWorkspace`, check `/health`) cannot run in this sandbox
   because of the nofile limit above. It passes on GitHub-hosted `ubuntu-latest`: run
   https://github.com/kgsmith19/hyper-agents/actions/runs/41154276833 (2026-10-31), 97 passed, 0 skipped.
-- The LLM-key tier of AC4 needs a repository secret. It must not run on forks or untrusted PRs.
+- The LLM-key tier of AC4 runs in `.github/workflows/llm-conversation.yml` on pushes to `main`. It logs
+  in to Infisical with GitHub OIDC (no repository secret), and the identity trusts only `main`, so it
+  cannot run on forks or PRs.
 
 ## Checklist for the next session
 

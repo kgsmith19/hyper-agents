@@ -27,6 +27,11 @@ permissions: {}
 
 env:
   UV_VERSION: "0.11.32"
+  # Not secrets: the Infisical project (hyperbolic-core) and the admin identity
+  # (ai-coding-harness) whose OIDC binding accepts only this repo's main branch and the
+  # ops-r2 environment. Committed here so a change is a reviewed PR. See agent-extensions#100.
+  INFISICAL_PROJECT_ID: 246790d5-245f-4f4a-a730-5dda5e882b05
+  INFISICAL_OPS_IDENTITY_ID: 813dda9e-a986-4448-aa6f-f46e0365deca
 
 jobs:
   plan:
@@ -86,9 +91,6 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    env:
-      INFISICAL_PROJECT_ID: ${{ vars.INFISICAL_PROJECT_ID }}
-      INFISICAL_OPS_IDENTITY_ID: ${{ vars.INFISICAL_OPS_IDENTITY_ID }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -114,9 +116,6 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    env:
-      INFISICAL_PROJECT_ID: ${{ vars.INFISICAL_PROJECT_ID }}
-      INFISICAL_OPS_IDENTITY_ID: ${{ vars.INFISICAL_OPS_IDENTITY_ID }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
