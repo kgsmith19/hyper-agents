@@ -3,6 +3,7 @@
 The ops broker lets an agent request registered secret and config operations. A GitHub Actions
 workflow runs them, reads credentials from Infisical, and writes a receipt. Agents never see
 secret values. Design and decision record: agent-extensions#100 (decision record comment).
+Where each secret lives: [secrets-index.md](secrets-index.md).
 
 ## How a request flows
 
