@@ -68,3 +68,52 @@ ops:
         enum: [kgsmith19/hyper-agents, kgsmith19/agent-extensions]
       - name: name
         pattern: '^[A-Z][A-Z0-9_]{2,63}$'
+
+  # P2: live key validation with one cheap read call (GET /v1/models). R0: no write.
+  - id: vendor.key.validate
+    adapter: vendor
+    action: validate_key
+    tier: R0
+    params:
+      - name: provider
+        enum: [openai, anthropic]
+      - name: source_path
+        pattern: '^/[A-Za-z0-9_./-]{0,128}$'
+      - name: source_name
+        pattern: '^[A-Z][A-Z0-9_]{2,63}$'
+
+  # P3: variables and settings.
+  - id: github.variable.list
+    adapter: github
+    action: list_variables
+    tier: R0
+    params:
+      - name: repo
+        enum: [kgsmith19/hyper-agents, kgsmith19/agent-extensions]
+
+  - id: github.variable.delete
+    adapter: github
+    action: delete_variable
+    tier: R1
+    params:
+      - name: repo
+        enum: [kgsmith19/hyper-agents, kgsmith19/agent-extensions]
+      - name: name
+        pattern: '^[A-Z][A-Z0-9_]{2,63}$'
+
+  - id: github.settings.get
+    adapter: github
+    action: get_settings
+    tier: R0
+    params:
+      - name: repo
+        enum: [kgsmith19/hyper-agents, kgsmith19/agent-extensions]
+
+  # P4: fixed argv allowlist (CLI_ALLOWLIST in adapters.py). Params name a key, never argv.
+  - id: cli.run
+    adapter: cli
+    action: run
+    tier: R0
+    params:
+      - name: command
+        enum: [gh-version, git-version]

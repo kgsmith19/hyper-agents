@@ -32,6 +32,15 @@ Where each secret lives: [secrets-index.md](secrets-index.md).
 registry entry and, if needed, an adapter action. Agents may propose ops by issue but cannot add
 them. Secret values are never parameters. Secrets are referenced by Infisical path and name.
 
+| Op | Tier | What it does |
+|---|---|---|
+| `infisical.secret.exists`, `infisical.secret.list_names` | R0 | Fingerprint or names only |
+| `github.secret.list`, `github.variable.list`, `github.settings.get` | R0 | Names, or a fixed settings field selection |
+| `vendor.key.validate` | R0 | One `GET /v1/models` to a fixed OpenAI or Anthropic host; status, validity and fingerprint only |
+| `cli.run` | R0 | One argv from `CLI_ALLOWLIST` in `adapters.py`; params name a key, never argv |
+| `github.variable.set`, `github.variable.delete` | R1 | Non-secret configuration |
+| `github.secret.set`, `github.secret.delete` | R2 | Waits for the `ops-r2` environment |
+
 ## Identities and bootstrap
 
 The Infisical plan allows 5 identities and the org holds 10, so no identity can be created. The
@@ -81,4 +90,7 @@ The last command is a dry-run. It prints a receipt with no values and makes no w
   steps through the runner, not from a session.
 - A dispatch from the sandbox returns 404 until `ops.yml` is on `main`. A 404 means the request
   reached GitHub.
-- Desktop and local-machine ops need a self-hosted runner (P4).
+- Desktop and local-machine ops need a self-hosted runner. `cli.run` covers the fixed
+  allowlist on the GitHub-hosted runner only.
+- Infisical secret rotation (a write) is not registered yet: it needs the `/ops/` folder and an
+  R2 dry-run proof first.
