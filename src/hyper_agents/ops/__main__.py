@@ -13,7 +13,7 @@ import uuid
 from pathlib import Path
 from typing import Any, cast
 
-from hyper_agents.ops.adapters import GithubAdapter, InfisicalAdapter
+from hyper_agents.ops.adapters import CliAdapter, GithubAdapter, InfisicalAdapter, VendorAdapter
 from hyper_agents.ops.core import OpRefused, run_op
 from hyper_agents.ops.registry import load_registry
 
@@ -53,7 +53,12 @@ def main(argv: list[str] | None = None) -> int:
     raw_params = cast(dict[str, Any], decoded)
 
     infisical = InfisicalAdapter(project_id=os.environ.get("INFISICAL_PROJECT_ID", ""))
-    adapters = {"infisical": infisical, "github": GithubAdapter(infisical)}
+    adapters = {
+        "infisical": infisical,
+        "github": GithubAdapter(infisical),
+        "vendor": VendorAdapter(infisical),
+        "cli": CliAdapter(),
+    }
     try:
         receipt = run_op(
             load_registry(args.registry),

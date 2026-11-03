@@ -14,7 +14,7 @@ import yaml
 
 TIERS = ("R0", "R1", "R2", "R3")
 GATED_TIERS = ("R2", "R3")
-ADAPTERS = ("github", "infisical")
+ADAPTERS = ("github", "infisical", "vendor", "cli")
 
 
 class RegistryError(ValueError):
