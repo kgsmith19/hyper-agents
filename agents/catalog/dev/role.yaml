@@ -1,0 +1,21 @@
+id: dev
+version: 0.1.0
+summary: "Implements one small, well-specified change with tests, inside its permitted paths. Never publishes."
+capabilities: ["read_repo", "write_repo", "run_checks", "repair_code"]
+tools: ["read_file", "write_file", "run_tests"]
+permitted_paths: ["src", "tests", "docs"]
+prohibited_writes: [".github", "agents"]
+network: none
+sandbox: workspace
+provider_tier: local
+limits:
+  max_turns: 40
+  timeout_seconds: 1200
+  max_tokens: 400000
+approval_thresholds:
+  max_files_changed: 5
+  max_lines_changed: 200
+input_schema: agents/catalog/task.schema.json
+output_schema: agents/catalog/dev/output.schema.json
+evidence: [test_log, check_result]
+dependencies: ["planner"]

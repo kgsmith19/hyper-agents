@@ -17,9 +17,20 @@ def catalog(tmp_path: Path) -> Path:
     return root
 
 
-def test_the_real_catalog_loads_all_four_roles() -> None:
+def test_the_real_catalog_loads_every_role_in_order() -> None:
+    # Oracle change (#25): the five team roles join the original four.
     registry = CatalogLoader(REAL, SafeYamlParser()).load()
-    assert registry.list() == ("builder", "planner", "reviewer", "verifier")
+    assert registry.list() == (
+        "builder",
+        "business-analyst",
+        "dev",
+        "owner-standin",
+        "planner",
+        "reviewer",
+        "senior-dev",
+        "tester",
+        "verifier",
+    )
     CatalogValidator().validate(registry)
 
 

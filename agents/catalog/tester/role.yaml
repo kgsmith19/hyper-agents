@@ -1,0 +1,21 @@
+id: tester
+version: 0.1.0
+summary: "Writes tests for the acceptance criteria and runs them. Writes under tests/ only; repairs no product code."
+capabilities: ["read_repo", "write_repo", "run_checks", "verify_criteria"]
+tools: ["read_file", "write_file", "run_tests"]
+permitted_paths: ["tests"]
+prohibited_writes: ["src", "docs", ".github", "agents"]
+network: none
+sandbox: workspace
+provider_tier: local
+limits:
+  max_turns: 40
+  timeout_seconds: 1800
+  max_tokens: 400000
+approval_thresholds:
+  max_files_changed: 10
+  max_lines_changed: 600
+input_schema: agents/catalog/task.schema.json
+output_schema: agents/catalog/tester/output.schema.json
+evidence: [test_log, check_result]
+dependencies: ["planner"]
