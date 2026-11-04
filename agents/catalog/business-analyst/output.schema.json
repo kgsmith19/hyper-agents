@@ -1,0 +1,37 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "acceptance_criteria": {
+      "items": {
+        "maxLength": 300,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 5,
+      "minItems": 1,
+      "type": "array"
+    },
+    "open_questions": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "out_of_scope": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "outcome": {
+      "maxLength": 300,
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "outcome",
+    "acceptance_criteria"
+  ],
+  "type": "object"
+}

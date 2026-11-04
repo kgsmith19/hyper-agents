@@ -1,0 +1,21 @@
+id: senior-dev
+version: 0.1.0
+summary: "Implements larger or cross-cutting changes with tests and repairs failing checks, inside its permitted paths. Never publishes."
+capabilities: ["read_repo", "write_repo", "run_checks", "repair_code", "review_diff"]
+tools: ["read_file", "write_file", "run_tests"]
+permitted_paths: ["src", "tests", "docs"]
+prohibited_writes: [".github", "agents"]
+network: none
+sandbox: workspace
+provider_tier: local
+limits:
+  max_turns: 80
+  timeout_seconds: 2700
+  max_tokens: 800000
+approval_thresholds:
+  max_files_changed: 20
+  max_lines_changed: 800
+input_schema: agents/catalog/task.schema.json
+output_schema: agents/catalog/senior-dev/output.schema.json
+evidence: [test_log, diff, check_result]
+dependencies: ["planner"]

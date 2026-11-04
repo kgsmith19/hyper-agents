@@ -1,0 +1,50 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "criteria": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "criterion": {
+            "maxLength": 300,
+            "minLength": 1,
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pass",
+              "fail",
+              "untested"
+            ]
+          },
+          "test": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "criterion",
+          "status"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "files_changed": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "summary": {
+      "maxLength": 500,
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "files_changed",
+    "criteria",
+    "summary"
+  ],
+  "type": "object"
+}

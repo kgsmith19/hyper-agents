@@ -31,7 +31,9 @@
         "propose_plan",
         "review_diff",
         "verify_criteria",
-        "repair_code"
+        "repair_code",
+        "request_ops",
+        "define_criteria"
       ],
       "title": "Capability",
       "type": "string"

@@ -22,6 +22,11 @@ class Capability(StrEnum):
     REVIEW_DIFF = "review_diff"
     VERIFY_CRITERIA = "verify_criteria"
     REPAIR_CODE = "repair_code"
+    # Submit typed ops-broker requests. The broker validates and runs them;
+    # R2 still waits on the owner's `ops-r2` approval. Owner stand-in only.
+    REQUEST_OPS = "request_ops"
+    # Turn a request into one outcome and its acceptance criteria.
+    DEFINE_CRITERIA = "define_criteria"
 
 
 ELEVATED_TOOLS = frozenset({"git_push", "publish", "read_secret", "network_unrestricted"})
