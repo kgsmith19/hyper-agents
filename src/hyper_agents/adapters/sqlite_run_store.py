@@ -28,7 +28,6 @@ import random
 import sqlite3
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +39,7 @@ from hyper_agents.domain.errors import (
     StaleState,
 )
 from hyper_agents.domain.events import EventEnvelope, read_envelope
+from hyper_agents.domain.runs import Budget, Checkpoint, RunLease
 
 _SCHEMA = """
 create table if not exists events (
@@ -73,29 +73,7 @@ create table if not exists checkpoints (
 
 Clock = Callable[[], float]
 
-
-@dataclass(frozen=True)
-class RunLease:
-    run_id: str
-    holder: str
-    token: int
-    expires_at: float
-
-
-@dataclass(frozen=True)
-class Checkpoint:
-    run_id: str
-    sequence: int
-    position: dict[str, Any]
-
-
-@dataclass(frozen=True)
-class Budget:
-    tokens_limit: int
-    tokens_used: int
-    attempts_limit: int
-    attempts_used: int
-    not_before: float
+__all__ = ["Budget", "Checkpoint", "RunLease", "SqliteRunStore", "full_jitter"]
 
 
 def full_jitter(attempt: int, *, base: float, cap: float, rng: random.Random) -> float:

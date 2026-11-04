@@ -34,6 +34,9 @@ fewer. Paths are relative to the repository root.
 
 ## P04: workflow, team selection, recovery
 
+Delivered in three slices: #27 (workflow DSL and `TeamSelector`), #29 (SQLite RunStore) and #31
+(controller and read-only tracker).
+
 - `workflows/default.yaml` is a strictly validated state machine.
 - `application/controller.py` owns transitions, approvals and retries.
 - `application/team.py` provides `TeamSelector`, choosing by risk R0–R3 and by path, schema and
