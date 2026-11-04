@@ -45,3 +45,11 @@ class InvalidInput(HyperAgentsError):
 
 class PolicyDenied(HyperAgentsError):
     category = ErrorCategory.POLICY_DENIED
+
+
+class BudgetExhausted(HyperAgentsError):
+    category = ErrorCategory.BUDGET_EXHAUSTED
+
+
+class StaleState(HyperAgentsError):
+    category = ErrorCategory.STALE_STATE
