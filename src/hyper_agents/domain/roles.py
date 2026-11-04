@@ -45,6 +45,10 @@ def _check_relative(value: str) -> str:
     return value
 
 
+# Public name for callers outside this module (the TeamSelector checks paths too).
+check_relative = _check_relative
+
+
 def resolve_inside(root: Path, relative: str) -> Path:
     """Resolve a permitted path against a real root, refusing a symlink that leaves it.
 

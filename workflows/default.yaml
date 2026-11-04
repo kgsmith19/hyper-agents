@@ -1,0 +1,39 @@
+# The default run workflow (P04-1). Data, validated by hyper_agents.domain.workflow.
+# Each working state names the slot that acts in it; the TeamSelector staffs slots.
+# Changing this file is a reviewed PR.
+id: default
+version: 0.1.0
+initial: planning
+states:
+  - {name: planning, slot: plan, max_visits: 2}
+  - {name: building, slot: build, max_visits: 4}
+  - {name: testing, slot: test, max_visits: 4}
+  - {name: reviewing, slot: review, max_visits: 4}
+  - {name: verifying, slot: verify, max_visits: 4}
+  - {name: awaiting_approval, slot: approve, max_visits: 2}
+  - {name: done, terminal: true}
+  - {name: failed, terminal: true}
+  - {name: cancelled, terminal: true}
+transitions:
+  - {from: planning, event: plan.accepted, to: building}
+  - {from: building, event: build.completed, to: testing}
+  - {from: testing, event: tests.passed, to: reviewing}
+  - {from: testing, event: tests.failed, to: building}
+  - {from: reviewing, event: review.approved, to: verifying}
+  - {from: reviewing, event: review.changes_requested, to: building}
+  - {from: verifying, event: verify.passed, to: awaiting_approval}
+  - {from: verifying, event: verify.failed, to: building}
+  - {from: awaiting_approval, event: approval.granted, to: done}
+  - {from: awaiting_approval, event: approval.declined, to: building}
+  - {from: planning, event: run.cancel, to: cancelled}
+  - {from: building, event: run.cancel, to: cancelled}
+  - {from: testing, event: run.cancel, to: cancelled}
+  - {from: reviewing, event: run.cancel, to: cancelled}
+  - {from: verifying, event: run.cancel, to: cancelled}
+  - {from: awaiting_approval, event: run.cancel, to: cancelled}
+  - {from: planning, event: run.fail, to: failed}
+  - {from: building, event: run.fail, to: failed}
+  - {from: testing, event: run.fail, to: failed}
+  - {from: reviewing, event: run.fail, to: failed}
+  - {from: verifying, event: run.fail, to: failed}
+  - {from: awaiting_approval, event: run.fail, to: failed}
