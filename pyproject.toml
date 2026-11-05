@@ -14,6 +14,7 @@ dependencies = [
 
 [project.scripts]
 hyper-agents = "hyper_agents.interfaces.cli:app"
+hyper-agents-hook = "hyper_agents.interfaces.hook_installer:main"
 
 [dependency-groups]
 dev = [
