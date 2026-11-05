@@ -172,6 +172,11 @@ class SqliteRunStore:
         ).fetchall()
         return [read_envelope(row["body"]) for row in rows]
 
+    def run_ids(self) -> list[str]:
+        """Return every admitted run in deterministic order without touching its history."""
+        rows = self._db.execute("select distinct run_id from events order by run_id").fetchall()
+        return [str(row["run_id"]) for row in rows]
+
     # --- leases ---------------------------------------------------------
 
     def claim(self, run_id: str, holder: str, ttl: float) -> RunLease | None:
