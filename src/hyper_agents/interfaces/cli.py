@@ -8,15 +8,43 @@ from importlib import metadata
 from pathlib import Path
 
 import typer
+from pydantic import ValidationError
 
 from hyper_agents import __version__
+from hyper_agents.adapters.fake_executor import FakeExecutor
 from hyper_agents.adapters.yaml_parser import SafeYamlParser
 from hyper_agents.application.catalog import CatalogLoader, CatalogValidator
+from hyper_agents.application.run_service import HeadlessRunService
+from hyper_agents.domain.api import RunRequest
 from hyper_agents.domain.errors import InvalidInput, PolicyDenied
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 roles_app = typer.Typer(no_args_is_help=True, help="Manage roles: list, show, validate, compile.")
 app.add_typer(roles_app, name="roles")
+
+
+def build_headless_service() -> HeadlessRunService:
+    """Construct the fixed local application path without user-supplied configuration."""
+    return HeadlessRunService(FakeExecutor())
+
+
+@app.command("run-json")
+def run_json() -> None:
+    """Read one RunRequest JSON value from stdin and emit one RunStatus JSON value."""
+    try:
+        raw = json.loads(sys.stdin.read())
+        if not isinstance(raw, dict):
+            raise ValueError("request must be an object")
+        request = RunRequest.model_validate(raw)
+    except (json.JSONDecodeError, ValidationError, ValueError):
+        typer.echo(
+            json.dumps(
+                {"error": "invalid_request", "detail": "input must be valid RunRequest JSON"}
+            ),
+            err=True,
+        )
+        raise typer.Exit(code=2) from None
+    typer.echo(build_headless_service().run(request).model_dump_json())
 
 
 @app.command()
