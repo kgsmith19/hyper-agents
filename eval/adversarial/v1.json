@@ -1,0 +1,1 @@
+{"version":1,"probes":[{"id":"malformed-result","expected":"worker_failed"},{"id":"over-budget","expected":"budget_exhausted"},{"id":"policy-smuggling","expected":"policy_denied"},{"id":"stale-run","expected":"stale_state"}]}
