@@ -1,0 +1,313 @@
+{
+  "$defs": {
+    "CancelRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "reason": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "requested_by": {
+          "enum": [
+            "owner",
+            "operator"
+          ],
+          "title": "Requested By",
+          "type": "string"
+        },
+        "run_id": {
+          "pattern": "^[A-Za-z0-9._-]{1,64}$",
+          "title": "Run Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "requested_by",
+        "reason"
+      ],
+      "title": "CancelRequest",
+      "type": "object"
+    },
+    "CriterionResult": {
+      "additionalProperties": false,
+      "properties": {
+        "criterion_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Criterion Id",
+          "type": "string"
+        },
+        "output_digest": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Output Digest",
+          "type": "string"
+        },
+        "passed": {
+          "title": "Passed",
+          "type": "boolean"
+        },
+        "sha": {
+          "pattern": "^[0-9a-f]{40}$",
+          "title": "Sha",
+          "type": "string"
+        }
+      },
+      "required": [
+        "criterion_id",
+        "sha",
+        "passed",
+        "output_digest"
+      ],
+      "title": "CriterionResult",
+      "type": "object"
+    },
+    "EventEnvelope": {
+      "additionalProperties": false,
+      "properties": {
+        "head_sha": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{40}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Head Sha"
+        },
+        "idempotency_key": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Idempotency Key",
+          "type": "string"
+        },
+        "occurred_at": {
+          "format": "date-time",
+          "title": "Occurred At",
+          "type": "string"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "title": "Payload",
+          "type": "object"
+        },
+        "run_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Run Id",
+          "type": "string"
+        },
+        "schema": {
+          "const": "hyper-agents.event/v1",
+          "title": "Schema",
+          "type": "string"
+        },
+        "sequence": {
+          "minimum": 0,
+          "title": "Sequence",
+          "type": "integer"
+        },
+        "type": {
+          "pattern": "^[a-z]+(\\.[a-z_]+)+$",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema",
+        "run_id",
+        "sequence",
+        "type",
+        "occurred_at",
+        "idempotency_key"
+      ],
+      "title": "EventEnvelope",
+      "type": "object"
+    },
+    "Evidence": {
+      "additionalProperties": false,
+      "description": "A verification receipt, as VerificationService produces it: bound to one SHA.",
+      "properties": {
+        "criteria": {
+          "items": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Criteria",
+          "type": "array"
+        },
+        "digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Digest",
+          "type": "string"
+        },
+        "kind": {
+          "const": "verification",
+          "title": "Kind",
+          "type": "string"
+        },
+        "passed": {
+          "title": "Passed",
+          "type": "boolean"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/$defs/CriterionResult"
+          },
+          "title": "Results",
+          "type": "array"
+        },
+        "sha": {
+          "pattern": "^[0-9a-f]{40}$",
+          "title": "Sha",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "sha",
+        "criteria",
+        "results",
+        "passed",
+        "digest"
+      ],
+      "title": "Evidence",
+      "type": "object"
+    },
+    "RunRequest": {
+      "additionalProperties": false,
+      "description": "A request to admit one run. Mirrors Controller.admit's arguments, by name.",
+      "properties": {
+        "attempts": {
+          "exclusiveMinimum": 0,
+          "maximum": 20,
+          "title": "Attempts",
+          "type": "integer"
+        },
+        "auth_change": {
+          "default": false,
+          "title": "Auth Change",
+          "type": "boolean"
+        },
+        "contract": {
+          "additionalProperties": true,
+          "title": "Contract",
+          "type": "object"
+        },
+        "head_sha": {
+          "pattern": "^[0-9a-f]{40}$",
+          "title": "Head Sha",
+          "type": "string"
+        },
+        "idempotency_key": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Idempotency Key",
+          "type": "string"
+        },
+        "paths": {
+          "items": {
+            "maxLength": 512,
+            "type": "string"
+          },
+          "maxItems": 500,
+          "title": "Paths",
+          "type": "array"
+        },
+        "risk": {
+          "enum": [
+            "R0",
+            "R1",
+            "R2",
+            "R3"
+          ],
+          "title": "Risk",
+          "type": "string"
+        },
+        "run_id": {
+          "pattern": "^[A-Za-z0-9._-]{1,64}$",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "schema_change": {
+          "default": false,
+          "title": "Schema Change",
+          "type": "boolean"
+        },
+        "tokens": {
+          "exclusiveMinimum": 0,
+          "maximum": 10000000,
+          "title": "Tokens",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "run_id",
+        "idempotency_key",
+        "contract",
+        "risk",
+        "head_sha",
+        "tokens",
+        "attempts"
+      ],
+      "title": "RunRequest",
+      "type": "object"
+    },
+    "RunStatus": {
+      "additionalProperties": false,
+      "description": "What one step did. Its statuses are exactly the controller's StepResult statuses.",
+      "properties": {
+        "detail": {
+          "default": "",
+          "maxLength": 300,
+          "title": "Detail",
+          "type": "string"
+        },
+        "run_id": {
+          "pattern": "^[A-Za-z0-9._-]{1,64}$",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "state": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "State"
+        },
+        "status": {
+          "enum": [
+            "advanced",
+            "busy",
+            "waiting_for_owner",
+            "finished",
+            "retrying",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "status",
+        "state"
+      ],
+      "title": "RunStatus",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "hyper-agents API contracts"
+}
