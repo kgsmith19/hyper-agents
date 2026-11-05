@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "cases": [
+    {"id": "held-out-baseline", "variant": "baseline", "budget": 100, "expected": {"status": "finished", "state": "done"}},
+    {"id": "held-out-review", "variant": "review", "budget": 100, "expected": {"status": "finished", "state": "done"}},
+    {"id": "held-out-recovery", "variant": "recovery", "budget": 100, "expected": {"status": "finished", "state": "done"}},
+    {"id": "held-out-strict", "variant": "strict", "budget": 100, "expected": {"status": "finished", "state": "done"}}
+  ]
+}
