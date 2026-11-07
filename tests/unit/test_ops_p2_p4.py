@@ -229,13 +229,23 @@ def test_deleting_an_already_absent_secret_succeeds_idempotently() -> None:
     )
     github = GithubAdapter(FakeInfisical(), run=run)
     receipt = run_op(
-        REGISTRY, "github.secret.delete",
+        REGISTRY,
+        "github.secret.delete",
         {"repo": "kgsmith19/hyper-agents", "name": "OPS_GATE_PROOF_ABSENT"},
-        mode="apply", gate="ops-r2", adapters={"github": github}, actor="t", run_id="r",
+        mode="apply",
+        gate="ops-r2",
+        adapters={"github": github},
+        actor="t",
+        run_id="r",
     )
     assert receipt["status"] == "applied"
     assert calls[0][0] == [
-        "gh", "secret", "delete", "OPS_GATE_PROOF_ABSENT", "-R", "kgsmith19/hyper-agents",
+        "gh",
+        "secret",
+        "delete",
+        "OPS_GATE_PROOF_ABSENT",
+        "-R",
+        "kgsmith19/hyper-agents",
     ]
 
 
@@ -243,8 +253,13 @@ def test_deleting_a_secret_still_fails_on_other_errors() -> None:
     _, run = fake_runner(returncode=1, stderr="HTTP 403: Resource not accessible by integration")
     github = GithubAdapter(FakeInfisical(), run=run)
     receipt = run_op(
-        REGISTRY, "github.secret.delete",
+        REGISTRY,
+        "github.secret.delete",
         {"repo": "kgsmith19/hyper-agents", "name": "OPS_GATE_PROOF_ABSENT"},
-        mode="apply", gate="ops-r2", adapters={"github": github}, actor="t", run_id="r",
+        mode="apply",
+        gate="ops-r2",
+        adapters={"github": github},
+        actor="t",
+        run_id="r",
     )
     assert receipt["status"] == "failed"
