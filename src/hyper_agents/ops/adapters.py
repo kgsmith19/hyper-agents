@@ -133,7 +133,14 @@ class GithubAdapter:
             self._gh(["secret", "set", params["name"], "-R", repo], stdin=value)
             return {"name": params["name"], "fingerprint": fingerprint(value)}
         if action == "delete_secret":
-            self._gh(["secret", "delete", params["name"], "-R", repo])
+            try:
+                self._gh(["secret", "delete", params["name"], "-R", repo])
+            except RuntimeError as error:
+                # Idempotent: a secret that is already absent (GitHub's HTTP 404) is the
+                # desired end state, not a failure. Every other error still fails the op.
+                if "HTTP 404" not in str(error):
+                    raise
+                return {"name": params["name"], "deleted": False, "already_absent": True}
             return {"name": params["name"], "deleted": True}
         if action == "set_variable":
             self._gh(["variable", "set", params["name"], "-R", repo], stdin=params["value"])

@@ -218,3 +218,33 @@ def test_ops_workflow_gates_r2_on_the_owner_environment_and_refuses_r3() -> None
     assert "environment" not in jobs["apply-r0-r1"]
     plan = json.dumps(jobs["plan"])
     assert "R3 ops are not wired yet" in plan
+
+
+def test_deleting_an_already_absent_secret_succeeds_idempotently() -> None:
+    # Negative control first: a real 404 from `gh secret delete` (the secret is absent) must
+    # not fail the run; any other failure must still fail it.
+    calls, run = fake_runner(
+        returncode=1,
+        stderr="failed to delete secret OPS_GATE_PROOF_ABSENT: HTTP 404 (https://api.github.com/repos/x/actions/secrets/OPS_GATE_PROOF_ABSENT)",
+    )
+    github = GithubAdapter(FakeInfisical(), run=run)
+    receipt = run_op(
+        REGISTRY, "github.secret.delete",
+        {"repo": "kgsmith19/hyper-agents", "name": "OPS_GATE_PROOF_ABSENT"},
+        mode="apply", gate="ops-r2", adapters={"github": github}, actor="t", run_id="r",
+    )
+    assert receipt["status"] == "applied"
+    assert calls[0][0] == [
+        "gh", "secret", "delete", "OPS_GATE_PROOF_ABSENT", "-R", "kgsmith19/hyper-agents",
+    ]
+
+
+def test_deleting_a_secret_still_fails_on_other_errors() -> None:
+    _, run = fake_runner(returncode=1, stderr="HTTP 403: Resource not accessible by integration")
+    github = GithubAdapter(FakeInfisical(), run=run)
+    receipt = run_op(
+        REGISTRY, "github.secret.delete",
+        {"repo": "kgsmith19/hyper-agents", "name": "OPS_GATE_PROOF_ABSENT"},
+        mode="apply", gate="ops-r2", adapters={"github": github}, actor="t", run_id="r",
+    )
+    assert receipt["status"] == "failed"
