@@ -89,6 +89,8 @@ class RepoAdapter:
                 "change_health": maintenance.change_health(self._forge, repo, apply=False),
                 "settings": maintenance.drift(self._forge, repo, self._desired()),
             }
+        if action == "settings_drift":
+            return maintenance.drift(self._forge, repo, self._desired())
         if action == "close_sweep":
             return maintenance.close_sweep(
                 self._forge, repo, now=self._now(), window_days=window, apply=True
