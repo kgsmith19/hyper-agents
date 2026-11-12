@@ -1,0 +1,25 @@
+# The one place that names hosting and secrets providers for repository maintenance.
+# Swapping a provider means changing a value here and adding one adapter; no use case changes.
+# Changing this file is a reviewed PR.
+
+forge:
+  adapter: github                  # one of hyper_agents.ops.fleet.FORGES
+  api: https://api.github.com
+  token:                           # resolved through the secrets adapter, never stored here
+    secrets: infisical
+    path: /ops/
+    name: GITHUB_OPS_PAT
+
+# The declared settings come from the Standard, the single source for every repository.
+settings_profile:
+  repo: kgsmith19/agent-engineering-standard
+  ref: main
+  path: TEMPLATES/repository-settings.json
+
+close_window_days: 14
+
+repos:
+  - kgsmith19/agent-engineering-standard
+  - kgsmith19/agent-extensions
+  - kgsmith19/hyper-agents
+  - kgsmith19/hyperbolic-core

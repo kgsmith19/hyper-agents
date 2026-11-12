@@ -1,0 +1,42 @@
+name: Repository maintenance
+
+# Thin trigger for `python -m hyper_agents.ops maintain` (any scheduler can run the same
+# command). For every repository in ops/fleet.yaml it closes Items named by merged changes,
+# flags conflicted changes (no CI can run on them) and reports settings drift. R0/R1 ops only;
+# settings apply stays an owner-approved R2 op through the Ops broker. Runs from main only.
+on:
+  schedule:
+    - cron: "11,41 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: repository-maintenance
+  cancel-in-progress: false
+
+env:
+  UV_VERSION: "0.11.32"
+  # Not secrets: the same Infisical project and ops identity the Ops broker uses.
+  INFISICAL_PROJECT_ID: 246790d5-245f-4f4a-a730-5dda5e882b05
+  INFISICAL_OPS_IDENTITY_ID: 813dda9e-a986-4448-aa6f-f46e0365deca
+
+jobs:
+  maintain:
+    name: Maintain the fleet (R0/R1)
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - run: python -m pip install "uv==${UV_VERSION}"
+      - run: uv sync --locked --no-dev
+      - run: uv run python -m hyper_agents.ops maintain

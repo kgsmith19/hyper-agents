@@ -117,3 +117,39 @@ ops:
     params:
       - name: command
         enum: [gh-version, git-version]
+
+  # Repository maintenance (provider-neutral; the hosting provider is chosen in ops/fleet.yaml).
+  # R0 report reads only. R1 close_sweep and change_health are reversible writes. R2 settings
+  # apply changes repository settings and waits for the owner through ops-r2.
+  - id: repo.report
+    adapter: repo
+    action: report
+    tier: R0
+    params:
+      - name: repo
+        enum: [kgsmith19/agent-engineering-standard, kgsmith19/agent-extensions, kgsmith19/hyper-agents, kgsmith19/hyperbolic-core]
+
+  - id: repo.close_sweep
+    adapter: repo
+    action: close_sweep
+    tier: R1
+    params:
+      - name: repo
+        enum: [kgsmith19/agent-engineering-standard, kgsmith19/agent-extensions, kgsmith19/hyper-agents, kgsmith19/hyperbolic-core]
+
+  - id: repo.change_health
+    adapter: repo
+    action: change_health
+    tier: R1
+    params:
+      - name: repo
+        enum: [kgsmith19/agent-engineering-standard, kgsmith19/agent-extensions, kgsmith19/hyper-agents, kgsmith19/hyperbolic-core]
+
+  - id: repo.settings_apply
+    adapter: repo
+    action: settings_apply
+    tier: R2
+    gate: ops-r2
+    params:
+      - name: repo
+        enum: [kgsmith19/agent-engineering-standard, kgsmith19/agent-extensions, kgsmith19/hyper-agents, kgsmith19/hyperbolic-core]
