@@ -1,0 +1,60 @@
+# Owner actions: the only steps that need the owner. `owner.actions_status` (run by
+# `maintain`) checks each one live and keeps one checklist item current in `tracker.repo`.
+# Add a future owner step as one entry here; checks are named in hyper_agents/ops/owner.py.
+tracker:
+  repo: kgsmith19/hyper-agents
+  broker_workflow: ops.yml
+  broker_ref: main
+  settings_apply_op: repo.settings_apply
+  expiry_warning_days: 14
+
+actions:
+  - id: ops-token
+    title: "Ops token: about 2 minutes, once a year"
+    why: >-
+      Maintenance needs it to close Issues after merges and to read and enforce repository
+      settings in every fleet repository.
+    check: forge_access
+    steps:
+      - >-
+        Open the [pre-filled token page](https://github.com/settings/personal-access-tokens/new?name=hyper-agents+ops&description=hyper-agents+ops+broker+and+fleet+maintenance+%28owner+actions+tracker%29&target_name=kgsmith19&expires_in=366&administration=write&contents=read&issues=write&pull_requests=write&secrets=write&variables=write&actions=write).
+        Name, expiry and permissions are filled in.
+      - >-
+        In **Resource owner**, pick another owner and then `kgsmith19` again (a GitHub bug
+        means the pre-fill does not stick otherwise).
+      - Under **Repository access** choose **All repositories**, click **Generate token** and copy it.
+      - In Infisical (ops project, environment `prod`, folder `/ops`) set **`GITHUB_OPS_PAT`** to it and save.
+      - Nothing else. The next maintenance run (within 30 minutes) ticks this off.
+
+  - id: settings-apply
+    title: "Approve repository settings (one click per repository)"
+    why: >-
+      Declared settings such as delete-branch-on-merge are not enforced yet; reused branches
+      then conflict and get no CI.
+    check: settings_clean
+    steps:
+      - >-
+        Nothing to start: once the ops token works, maintenance starts one settings-apply run
+        per repository that drifts.
+      - >-
+        Open the [Ops broker runs](https://github.com/kgsmith19/hyper-agents/actions/workflows/ops.yml)
+        and click **Review deployments → Approve** on each waiting run (several at once is fine).
+
+  - id: controller-tokens
+    title: "LifeOS controller tokens: one approval, then auto-renewing"
+    why: >-
+      Claude Code (financial_operations, reliability_engineer) and ChatGPT
+      (communications, household_operations) each need their own agents:request token
+      to ask the LifeOS role gate for decisions (hyperbolic-core #596).
+    check: secrets_present
+    params:
+      path: /lifeos/agents
+      names: CLAUDE_CODE_TOKEN,CHATGPT_TOKEN
+    steps:
+      - >-
+        When the hyperbolic-core "LifeOS controller tokens" run asks for `owner-approval`,
+        click **Review deployments → Approve**. It mints both tokens into Infisical
+        `/lifeos/agents` (never printed) and renews them every ~25 days without asking again.
+      - >-
+        Connect ChatGPT once: paste `/lifeos/agents/CHATGPT_TOKEN` into the LifeOS connector.
+        Claude Code picks its token up by itself.

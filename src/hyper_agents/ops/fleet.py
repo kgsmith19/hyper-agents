@@ -70,7 +70,12 @@ class RepoAdapter:
         )
         self._now = clock or (lambda: datetime.now(UTC))
 
-    def _desired(self) -> dict[str, object]:
+    @property
+    def forge(self) -> ForgePort:
+        return self._forge
+
+    def desired(self) -> dict[str, object]:
+        """The declared settings profile, read through the forge from its single source."""
         text = self._forge.read_file(
             self._fleet.profile_repo, self._fleet.profile_ref, self._fleet.profile_path
         )
@@ -87,10 +92,10 @@ class RepoAdapter:
                     self._forge, repo, now=self._now(), window_days=window, apply=False
                 ),
                 "change_health": maintenance.change_health(self._forge, repo, apply=False),
-                "settings": maintenance.drift(self._forge, repo, self._desired()),
+                "settings": maintenance.drift(self._forge, repo, self.desired()),
             }
         if action == "settings_drift":
-            return maintenance.drift(self._forge, repo, self._desired())
+            return maintenance.drift(self._forge, repo, self.desired())
         if action == "close_sweep":
             return maintenance.close_sweep(
                 self._forge, repo, now=self._now(), window_days=window, apply=True
@@ -98,5 +103,5 @@ class RepoAdapter:
         if action == "change_health":
             return maintenance.change_health(self._forge, repo, apply=True)
         if action == "settings_apply":
-            return maintenance.apply_settings(self._forge, repo, self._desired(), apply=True)
+            return maintenance.apply_settings(self._forge, repo, self.desired(), apply=True)
         raise ValueError(f"unknown repo action: {action}")
