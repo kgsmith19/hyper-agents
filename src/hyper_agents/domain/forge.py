@@ -55,5 +55,18 @@ def closing_items(body: str, repo: str) -> list[int]:
 
 
 def settings_drift(live: dict[str, object], desired: dict[str, object]) -> dict[str, object]:
-    """The desired fields whose live value differs (a missing live field counts as different)."""
-    return {key: value for key, value in desired.items() if live.get(key) != value}
+    """The desired fields whose readable live value differs.
+
+    A field the credential cannot read comes back as ``None``; that is not drift, it is
+    unreadable (see ``unreadable_settings``), so it is never reported or written as drift.
+    """
+    return {
+        key: value
+        for key, value in desired.items()
+        if live.get(key) is not None and live.get(key) != value
+    }
+
+
+def unreadable_settings(live: dict[str, object], desired: dict[str, object]) -> list[str]:
+    """Desired fields the credential could not read (usually: it lacks admin access)."""
+    return sorted(key for key in desired if live.get(key) is None)

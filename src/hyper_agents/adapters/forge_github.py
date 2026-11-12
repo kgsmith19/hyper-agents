@@ -6,6 +6,7 @@ adapter never chooses a vault. Requests go only to ``api``; the default is GitHu
 
 import json
 import re
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
@@ -54,8 +55,10 @@ class GithubForge:
         token: Callable[[], str],
         api: str = "https://api.github.com",
         transport: Transport | None = None,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self._token = token
+        self._sleep = sleep
         self._api = api.rstrip("/")
         self._host = urlsplit(self._api).netloc
         self._transport = transport or _urllib_transport
@@ -74,6 +77,12 @@ class GithubForge:
             body = json.dumps(payload).encode("utf-8")
             headers["Content-Type"] = "application/json"
         status, raw = self._transport(method, url, headers, body)
+        # Rate limited: back off and retry, at most three times (5s, 20s, 60s).
+        for delay in (5.0, 20.0, 60.0):
+            if status != 429:
+                break
+            self._sleep(delay)
+            status, raw = self._transport(method, url, headers, body)
         if status >= 400:
             raise RuntimeError(f"{method} {path} failed with HTTP {status}")
         return json.loads(raw) if raw else None

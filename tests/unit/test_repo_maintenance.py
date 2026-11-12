@@ -109,7 +109,7 @@ def test_settings_drift_and_apply_change_only_differing_fields() -> None:
     assert report["changed"] == ["delete_branch_on_merge"]
     assert forge.writes == [("settings", {"delete_branch_on_merge": True})]
     assert apply_settings(forge, REPO, desired, apply=True)["applied"] is False
-    assert settings_drift({}, {"a": 1}) == {"a": 1}
+    assert settings_drift({}, {"a": 1}) == {}  # unreadable, never drift (see below)
 
 
 def test_application_and_domain_never_name_a_hosting_provider() -> None:
@@ -133,3 +133,35 @@ def test_application_and_domain_never_name_a_hosting_provider() -> None:
         for provider in ("github", "gitlab", "forgejo", "bitbucket"):
             assert provider not in text, (path.name, provider)
             assert provider not in names.lower(), (path.name, provider)
+
+
+def test_unreadable_settings_are_not_drift_and_block_apply() -> None:
+    """A credential without admin read sees None; that must never look like drift or be written."""
+    import pytest
+
+    desired: dict[str, object] = {"delete_branch_on_merge": True, "allow_auto_merge": True}
+    forge = FakeForge(live_settings={"delete_branch_on_merge": None, "allow_auto_merge": True})
+    report = drift(forge, REPO, desired)
+    assert report["drift"] == {} and report["unreadable"] == ["delete_branch_on_merge"]
+    with pytest.raises(PermissionError, match="admin access"):
+        apply_settings(forge, REPO, desired, apply=True)
+    assert forge.writes == []
+
+
+def test_one_failed_close_does_not_stop_the_others() -> None:
+    """Every closable item is attempted; the failure is reported, never swallowed."""
+    import pytest
+
+    class Flaky(FakeForge):
+        def close_item(self, repo: str, number: int, note: str) -> None:
+            if number == 3:
+                raise RuntimeError("HTTP 403")
+            super().close_item(repo, number, note)
+
+    forge = Flaky(
+        merged=[merged(10, "Closes #3\nCloses #4")],
+        items={3: Item(3, open=True), 4: Item(4, open=True)},
+    )
+    with pytest.raises(RuntimeError, match="could not close"):
+        close_sweep(forge, REPO, now=NOW, apply=True)
+    assert forge.writes == [("close", 4)]

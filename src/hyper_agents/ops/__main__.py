@@ -89,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
     return EXIT_FAILED if receipt["status"] == "failed" else EXIT_OK
 
 
-MAINTAIN_OPS = ("repo.close_sweep", "repo.change_health", "repo.report")
+MAINTAIN_OPS = ("repo.close_sweep", "repo.change_health", "repo.settings_drift")
 
 
 def _maintain(registry_path: Path, fleet_path: Path) -> int:

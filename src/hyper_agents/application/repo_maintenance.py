@@ -16,7 +16,7 @@ Every function returns a plain report. With ``apply=False`` nothing is written.
 from datetime import datetime, timedelta
 
 from hyper_agents.application.ports import ForgePort
-from hyper_agents.domain.forge import closing_items, settings_drift
+from hyper_agents.domain.forge import closing_items, settings_drift, unreadable_settings
 
 NEEDS_UPDATE = "needs-update"
 HEALTH_MARKER = "<!-- hyper-agents:change-health:v1 -->"
@@ -32,6 +32,7 @@ def close_sweep(
 ) -> dict[str, object]:
     closed: list[str] = []
     skipped: list[str] = []
+    failed: list[str] = []
     for change in forge.merged_changes_since(repo, now - timedelta(days=window_days)):
         if change.merged_at is None:
             continue
@@ -43,8 +44,14 @@ def close_sweep(
                 skipped.append(f"#{number} (reopened after change #{change.number} merged)")
                 continue
             if apply:
-                forge.close_item(repo, number, f"Closed by merged change #{change.number}.")
+                try:
+                    forge.close_item(repo, number, f"Closed by merged change #{change.number}.")
+                except Exception as error:  # one item's failure never stops the others
+                    failed.append(f"#{number}: {error}")
+                    continue
             closed.append(f"#{number} (change #{change.number})")
+    if failed:
+        raise RuntimeError(f"closed {closed}; could not close {failed}")
     return {"repo": repo, "closed": closed, "skipped": skipped, "applied": apply}
 
 
@@ -79,13 +86,24 @@ def change_health(forge: ForgePort, repo: str, *, apply: bool) -> dict[str, obje
 
 
 def drift(forge: ForgePort, repo: str, desired: dict[str, object]) -> dict[str, object]:
-    return {"repo": repo, "drift": settings_drift(forge.settings(repo), desired)}
+    live = forge.settings(repo)
+    return {
+        "repo": repo,
+        "drift": settings_drift(live, desired),
+        "unreadable": unreadable_settings(live, desired),
+    }
 
 
 def apply_settings(
     forge: ForgePort, repo: str, desired: dict[str, object], *, apply: bool
 ) -> dict[str, object]:
-    changes = settings_drift(forge.settings(repo), desired)
+    live = forge.settings(repo)
+    unreadable = unreadable_settings(live, desired)
+    if unreadable:
+        raise PermissionError(
+            f"cannot read {unreadable} on {repo}: the credential needs repository admin access"
+        )
+    changes = settings_drift(live, desired)
     if apply and changes:
         forge.set_settings(repo, changes)
     return {"repo": repo, "changed": sorted(changes), "applied": apply and bool(changes)}

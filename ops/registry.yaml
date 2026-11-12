@@ -129,6 +129,14 @@ ops:
       - name: repo
         enum: [kgsmith19/agent-engineering-standard, kgsmith19/agent-extensions, kgsmith19/hyper-agents, kgsmith19/hyperbolic-core]
 
+  - id: repo.settings_drift
+    adapter: repo
+    action: settings_drift
+    tier: R0
+    params:
+      - name: repo
+        enum: [kgsmith19/agent-engineering-standard, kgsmith19/agent-extensions, kgsmith19/hyper-agents, kgsmith19/hyperbolic-core]
+
   - id: repo.close_sweep
     adapter: repo
     action: close_sweep

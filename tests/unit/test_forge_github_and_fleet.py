@@ -130,7 +130,13 @@ def test_fleet_config_names_four_repos_and_a_known_forge() -> None:
     fleet = load_fleet(ROOT / "ops/fleet.yaml")
     assert len(fleet.repos) == 4 and fleet.forge_adapter == "github"
     registry = load_registry(ROOT / "ops/registry.yaml")
-    for op_id in ("repo.report", "repo.close_sweep", "repo.change_health", "repo.settings_apply"):
+    for op_id in (
+        "repo.report",
+        "repo.settings_drift",
+        "repo.close_sweep",
+        "repo.change_health",
+        "repo.settings_apply",
+    ):
         enum = registry[op_id].params[0].enum
         assert enum is not None and set(enum) == set(fleet.repos), op_id
     assert registry["repo.settings_apply"].tier == "R2"
@@ -206,3 +212,44 @@ def test_repo_adapter_report_writes_nothing_and_settings_apply_is_gated() -> Non
 def test_repo_adapter_refuses_repositories_outside_the_fleet() -> None:
     with pytest.raises(ValueError, match="not in the fleet"):
         _adapter(FakeForge()).execute("report", {"repo": "someone/else"})
+
+
+def test_rate_limits_back_off_and_retry() -> None:
+    """HTTP 429 is retried with backoff instead of failing the whole maintenance run."""
+    sleeps: list[float] = []
+    answers = iter([(429, b""), (429, b""), (200, b"{}")])
+
+    def transport(
+        method: str, url: str, headers: dict[str, str], body: bytes | None
+    ) -> tuple[int, bytes]:
+        return next(answers)
+
+    adapter = GithubForge(token=lambda: "tok", transport=transport, sleep=sleeps.append)
+    assert adapter.settings(REPO) == dict.fromkeys(
+        (
+            "allow_squash_merge",
+            "allow_merge_commit",
+            "allow_rebase_merge",
+            "allow_auto_merge",
+            "delete_branch_on_merge",
+            "allow_update_branch",
+            "squash_merge_commit_title",
+            "squash_merge_commit_message",
+            "has_issues",
+        )
+    )
+    assert sleeps == [5.0, 20.0]
+
+
+def test_rate_limit_that_persists_still_fails_loudly() -> None:
+    def limited(
+        method: str, url: str, headers: dict[str, str], body: bytes | None
+    ) -> tuple[int, bytes]:
+        return 429, b""
+
+    def no_sleep(seconds: float) -> None:
+        return None
+
+    adapter = GithubForge(token=lambda: "tok", transport=limited, sleep=no_sleep)
+    with pytest.raises(RuntimeError, match="HTTP 429"):
+        adapter.settings(REPO)
