@@ -267,6 +267,23 @@ class OwnerAdapter:
             fixes=tuple((("identity", str(row["id"])), ("role", replacement)) for row in admins),
         )
 
+    def _signing_folder_boundary(self, action: OwnerAction) -> Status:
+        """Every non-broker workload must have the permanent metadata-only folder role."""
+        report = cast(dict[str, Any], self._secrets.signing_folder_access_report())
+        drift = cast(list[dict[str, str]], report["drift"])
+        if not drift:
+            return Status(
+                True,
+                f"{len(cast(list[str], report['protected']))} workload identities cannot read "
+                f"values at {report['path']}",
+            )
+        names = ", ".join(item["name"] for item in drift)
+        return Status(
+            False,
+            f"folder override missing or too broad for {names}",
+            fixes=tuple((("identity", item["identity"]), ("permission", "list")) for item in drift),
+        )
+
     def execute(self, action: str, params: Mapping[str, str]) -> dict[str, Any]:
         if action != "status":
             raise ValueError(f"unknown owner action: {action}")
@@ -276,6 +293,7 @@ class OwnerAdapter:
             "secrets_present": self._secrets_present,
             "branches_pruned": self._branches_pruned,
             "identities_least_privilege": self._identities_least_privilege,
+            "signing_folder_boundary": self._signing_folder_boundary,
             "controller_tokens_fresh": self._controller_tokens_fresh,
         }
         report = tracker.actions_status(

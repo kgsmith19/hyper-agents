@@ -191,3 +191,37 @@ actions:
         Infisical → central-vault → Access Control → Machine Identities → ai-coding-harness
         (or the identity named above) → change the project role from Admin to Member → Save.
       - Nothing else. The next maintenance run ticks this off.
+
+  - id: signing-folder-boundary
+    title: "LifeOS signing-key values are broker-only"
+    why: >-
+      Project Viewer and Member roles are broad enough to read every secret value. Infisical's
+      native folder override narrows every workload except the controller-token broker to List
+      on /platform/lifeos-signing, exposing names and metadata but not the private-key value.
+    check: signing_folder_boundary
+    resolver:
+      op: infisical.signing_folder.restrict
+      max_attempts: 2
+    blocker:
+      blocker_id: MB-011
+      provider: infisical
+      capability: folder-level access control
+      resource: central-vault prod:/platform/lifeos-signing
+      failure_class: tooling_permission
+      attempts:
+        - "Maintenance checks every machine identity's native folder grant without reading a secret value."
+        - "The resolver creates or updates one permanent List grant per drifting non-broker identity."
+      why_human_only: Only if the paid folder-access feature or grant permission refuses two automated runs.
+      minimum_human_action: Grant the named identity permanent List access to /platform/lifeos-signing.
+      required_access: Infisical project access capable of managing folder permissions
+      safety: >-
+        The op refuses the broker, refuses every role except List, targets one exact folder,
+        and reads the grant back. It never reads, moves, rotates or deletes a secret.
+      validation: Every non-broker machine identity has a permanent List override on the exact folder.
+      owner: kgsmith19
+      source: https://github.com/kgsmith19/hyper-agents/issues/86
+    steps:
+      - >-
+        Infisical → central-vault → prod → /platform/lifeos-signing → Manage Access → set the
+        identity named above to permanent List. Do not change ai-coding-harness (the broker).
+      - Nothing else. The next maintenance run verifies and ticks this off.

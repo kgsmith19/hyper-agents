@@ -67,6 +67,9 @@ def _send(method: str, url: str, token: str, body: Mapping[str, Any] | None) -> 
 # Built-in project roles an op may assign. Never "admin": no workload identity may hold it,
 # and an agent must never be able to grant it (owner decision 2026-11-13, MB-009).
 ASSIGNABLE_ROLES = ("member", "viewer", "no-access")
+SIGNING_PATH = "/platform/lifeos-signing"
+LIFEOS_BROKER_NAME = "ai-coding-harness"
+SIGNING_FOLDER_PERMISSION = "list"
 Sender = Callable[[str, str, str, Mapping[str, Any] | None], dict[str, Any]]
 
 
@@ -283,6 +286,108 @@ class InfisicalAdapter:
             raise RuntimeError(f"read-back shows roles {after} for {identity}")
         return {"identity": identity, "before": before, "after": after}
 
+    def _folder_access_url(self, identity: str) -> str:
+        return (
+            f"{INFISICAL_API}/v1/projects/{quote(self._project_id)}"
+            f"/memberships/identities/{quote(identity)}/secret-folder-access"
+        )
+
+    def _identity_row(self, identity: str) -> dict[str, Any]:
+        row = next((item for item in self.identity_roles() if item["id"] == identity), None)
+        if row is None:
+            raise LookupError(f"identity {identity} is not a member of this project")
+        return row
+
+    def _signing_grants(self, identity: str) -> list[dict[str, Any]]:
+        response = self._send("GET", self._folder_access_url(identity), self._access_token(), None)
+        grants = cast(list[dict[str, Any]], response.get("folderAccess") or [])
+        return [
+            grant
+            for grant in grants
+            if grant.get("environment") == INFISICAL_ENVIRONMENT
+            and grant.get("secretPath") == SIGNING_PATH
+        ]
+
+    def signing_folder_access_report(self) -> dict[str, Any]:
+        """Folder-role metadata only. The signing-key value is never requested."""
+        protected: list[str] = []
+        drift: list[dict[str, str]] = []
+        for row in self.identity_roles():
+            if row["name"] == LIFEOS_BROKER_NAME:
+                continue
+            grants = self._signing_grants(str(row["id"]))
+            if len(grants) > 1:
+                permission = "duplicate"
+            elif not grants:
+                permission = "missing"
+            else:
+                grant = grants[0]
+                permission = str(grant.get("permission") or "missing")
+                if grant.get("isTemporary") or permission != SIGNING_FOLDER_PERMISSION:
+                    pass
+                else:
+                    protected.append(str(row["name"]))
+                    continue
+            drift.append(
+                {"identity": str(row["id"]), "name": str(row["name"]), "permission": permission}
+            )
+        return {
+            "path": SIGNING_PATH,
+            "broker": LIFEOS_BROKER_NAME,
+            "protected": sorted(protected),
+            "drift": sorted(drift, key=lambda item: item["name"]),
+        }
+
+    def restrict_signing_folder(self, identity: str, permission: str) -> dict[str, Any]:
+        """Apply the one safe folder override and read it back.
+
+        The native folder role supersedes a broader project Viewer/Member role on this exact
+        folder. ``list`` exposes names and metadata, never secret values.
+        """
+        if permission != SIGNING_FOLDER_PERMISSION:
+            raise ValueError("only 'list' may be assigned to the LifeOS signing folder")
+        row = self._identity_row(identity)
+        if row["name"] == LIFEOS_BROKER_NAME:
+            raise PermissionError("refusing to restrict the designated LifeOS token broker")
+        grants = self._signing_grants(identity)
+        if len(grants) > 1:
+            raise RuntimeError(f"multiple signing-folder grants exist for identity {identity}")
+        body = {
+            "environmentSlug": INFISICAL_ENVIRONMENT,
+            "secretPath": SIGNING_PATH,
+            "permission": SIGNING_FOLDER_PERMISSION,
+            "type": {"isTemporary": False},
+        }
+        if not grants:
+            method, action = "POST", "created"
+        elif grants[0].get("permission") == permission and not grants[0].get("isTemporary"):
+            return {
+                "identity": identity,
+                "name": row["name"],
+                "path": SIGNING_PATH,
+                "permission": permission,
+                "grant_id": str(grants[0].get("id") or ""),
+                "action": "unchanged",
+            }
+        else:
+            method, action = "PATCH", "updated"
+        self._send(method, self._folder_access_url(identity), self._access_token(), body)
+        after = self._signing_grants(identity)
+        if (
+            len(after) != 1
+            or after[0].get("permission") != permission
+            or after[0].get("isTemporary")
+        ):
+            raise RuntimeError(f"read-back did not show a permanent list grant for {identity}")
+        return {
+            "identity": identity,
+            "name": row["name"],
+            "path": SIGNING_PATH,
+            "permission": permission,
+            "grant_id": str(after[0].get("id") or ""),
+            "action": action,
+        }
+
     def execute(self, action: str, params: Mapping[str, str]) -> dict[str, Any]:
         if action == "access_report":
             rows = self.identity_roles()
@@ -292,6 +397,10 @@ class InfisicalAdapter:
             }
         if action == "set_identity_role":
             return self.set_identity_role(params["identity"], params["role"])
+        if action == "signing_folder_access_report":
+            return self.signing_folder_access_report()
+        if action == "restrict_signing_folder":
+            return self.restrict_signing_folder(params["identity"], params["permission"])
         path = params["source_path"]
         if action == "exists":
             value = self.get(path, params["source_name"])

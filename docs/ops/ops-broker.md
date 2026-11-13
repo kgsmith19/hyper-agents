@@ -44,6 +44,8 @@ them. Secret values are never parameters. Secrets are referenced by Infisical pa
 | `github.variable.set`, `github.variable.delete` | R1 | Non-secret configuration |
 | `infisical.access.report` | R0 | Machine identities with their role slugs (names and ids only) |
 | `infisical.identity.set_role` | R2 | Set one identity to a built-in non-admin role (`member`, `viewer`, `no-access`), then read it back; admin is refused |
+| `infisical.signing_folder.report` | R0 | Names, IDs and native folder-role metadata only; no secret value |
+| `infisical.signing_folder.restrict` | R2 | Set one non-broker identity to permanent `List` on exactly `/platform/lifeos-signing`, then read the grant back |
 | `repo.report`, `repo.settings_drift` | R0 | Fleet maintenance reads (`ops/fleet.yaml`) |
 | `repo.close_sweep`, `repo.change_health` | R1 | Close Items named by merged changes; flag conflicted changes |
 | `repo.ledger_drift` | R0 | Branches outside `ops/branch_ledger.yaml` that no open change uses (candidates to reconcile); deletes nothing |
