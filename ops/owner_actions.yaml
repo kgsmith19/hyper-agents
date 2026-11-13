@@ -13,12 +13,13 @@ actions:
     title: "Ops token: about 2 minutes, once a year"
     why: >-
       Maintenance needs it to close Issues after merges and to read and enforce repository
-      settings in every fleet repository. Administration write is for settings apply; secrets,
-      variables and actions write are for the Ops broker's R1/R2 ops, each still gated.
+      settings in every fleet repository. Administration write is for settings apply; contents
+      write is for deleting reconciled branches (lease-checked); secrets, variables and actions
+      write are for the Ops broker's R1/R2 ops, each still gated.
     check: forge_access
     steps:
       - >-
-        Open the [pre-filled token page](https://github.com/settings/personal-access-tokens/new?name=hyper-agents+ops&description=hyper-agents+ops+broker+and+fleet+maintenance+%28owner+actions+tracker%29&target_name=kgsmith19&expires_in=366&administration=write&contents=read&issues=write&pull_requests=write&secrets=write&variables=write&actions=write).
+        Open the [pre-filled token page](https://github.com/settings/personal-access-tokens/new?name=hyper-agents+ops&description=hyper-agents+ops+broker+and+fleet+maintenance+%28owner+actions+tracker%29&target_name=kgsmith19&expires_in=366&administration=write&contents=write&issues=write&pull_requests=write&secrets=write&variables=write&actions=write).
         Name, expiry and permissions are filled in.
       - >-
         In **Resource owner**, pick another owner and then `kgsmith19` again (a GitHub bug
@@ -63,3 +64,21 @@ actions:
       - >-
         Connect ChatGPT once: paste `/lifeos/agents/CHATGPT_TOKEN` into the LifeOS connector.
         Claude Code picks its token up by itself.
+
+  - id: branch-prune
+    title: "Stale branches: one permission edit (or one script run)"
+    why: >-
+      Reconciled branches (ops/branch_ledger.yaml) pile up and hide the active ones.
+      Maintenance deletes each one only while its head is still the recorded SHA, tagging
+      superseded work archive/<branch> first. Deleting a branch needs Contents write on the
+      ops token, which it does not have yet.
+    check: branches_pruned
+    steps:
+      - >-
+        GitHub → Settings → Developer settings → Fine-grained tokens → **hyper-agents ops** →
+        Edit. Under Repository permissions set **Contents** to **Read and write** and save.
+        The token value does not change, so nothing needs storing again.
+      - >-
+        Nothing else. The next maintenance run (within 30 minutes) prunes the ledger and this
+        item ticks itself off. To prune right away instead, run `scripts/prune-branches.sh`
+        once with `gh` signed in as kgsmith19.

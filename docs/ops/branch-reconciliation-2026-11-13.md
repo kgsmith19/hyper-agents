@@ -5,9 +5,9 @@ Every non-default remote branch in the four fleet repositories, with one disposi
 - **MERGED_OR_CONTAINED**: delete, using the head SHA as a lease.
 - **SUPERSEDED_OR_ABANDONED**: tag `archive/<branch>` at the exact SHA, then delete. The owner chose this on 2026-11-13.
 
-Retained: `ccr-75b2b0cd-yfz3b3` in each repository is the active session branch.
+Retained at first: `ccr-75b2b0cd-yfz3b3`, then the active session branch. Live re-check 2026-11-13 (next session): that session has ended, and its branch is content-identical to `main` in all three repositories (rows added at the end). The active session branch is never in the ledger.
 
-Blocker: session pushes can only reach the session branch, and the connected GitHub tools have no ref-delete. So the deletion below is one owner command (`scripts/prune-branches.sh`, read-verify-then-delete). Follow-up automation: a lease-checked `repo.branch_prune` op in `maintain`, plus `delete_branch_on_merge` via settings apply, so branches stop piling up (#65).
+Session pushes can only reach the session branch, so the deletion runs elsewhere. The machine-readable ledger is `ops/branch_ledger.yaml`. `maintain` runs the lease-checked R1 op `repo.branch_prune` against it every 30 minutes. The op reports `blocked` and writes nothing until the ops token has Contents: Read and write. `scripts/prune-branches.sh` is the owner's equivalent, and either may go first. Owner-actions item `branch-prune` (#58) ticks itself off once every ledger branch is gone. `delete_branch_on_merge` is on in all four repositories, so merged branches stop piling up.
 
 | Repository | Branch | Head SHA | Disposition | Evidence | Action |
 |---|---|---|---|---|---|
@@ -78,3 +78,6 @@ Blocker: session pushes can only reach the session branch, and the connected Git
 | agent-extensions | `claude/sleepy-lamport-rk45pp` | `8e1acaf1c50c` | MERGED_OR_CONTAINED | ancestor of main | delete (lease) |
 | agent-extensions | `issue/36-queue-guard-proof` | `10b0bcdabe3d` | SUPERSEDED_OR_ABANDONED | DO-NOT-MERGE proof PR #75 (completed) | tag archive/, then delete (lease) |
 | hyper-agents | `ccr-a3588a7e-gkdp4s` | `9e7fd0f9ad52` | MERGED_OR_CONTAINED | PR #59 closed; commit contained in merged #60 | delete (lease) |
+| hyper-agents | `ccr-75b2b0cd-yfz3b3` | `185df3f33ef9` | MERGED_OR_CONTAINED | equals `main` head (#71 squash) | delete (lease) |
+| hyperbolic-core | `ccr-75b2b0cd-yfz3b3` | `86573b673680` | MERGED_OR_CONTAINED | equals `main` head (#624 squash) | delete (lease) |
+| agent-engineering-standard | `ccr-75b2b0cd-yfz3b3` | `025ac9653425` | MERGED_OR_CONTAINED | tree identical to `main` (#339 squash) | delete (lease) |

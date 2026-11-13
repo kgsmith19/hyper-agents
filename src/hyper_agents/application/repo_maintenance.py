@@ -9,6 +9,10 @@
   a change that is only behind gets its branch updated.
 - ``settings_drift`` / ``settings_apply``: compare live settings with the declared profile,
   and set only the differing fields.
+- ``branch_prune``: delete reconciled branches from a ledger, each only while its live head
+  still equals the ledger SHA (a lease), never one an open change uses, and tag
+  ``archive/<branch>`` first where the ledger says so. Without ref write access it reports
+  ``blocked`` and writes nothing.
 
 Every function returns a plain report. With ``apply=False`` nothing is written.
 """
@@ -16,7 +20,13 @@ Every function returns a plain report. With ``apply=False`` nothing is written.
 from datetime import datetime, timedelta
 
 from hyper_agents.application.ports import ForgePort
-from hyper_agents.domain.forge import closing_items, settings_drift, unreadable_settings
+from hyper_agents.domain.forge import (
+    PROTECTED_BRANCHES,
+    LedgerBranch,
+    closing_items,
+    settings_drift,
+    unreadable_settings,
+)
 
 NEEDS_UPDATE = "needs-update"
 HEALTH_MARKER = "<!-- hyper-agents:change-health:v1 -->"
@@ -107,3 +117,90 @@ def apply_settings(
     if apply and changes:
         forge.set_settings(repo, changes)
     return {"repo": repo, "changed": sorted(changes), "applied": apply and bool(changes)}
+
+
+PRUNE_RESULTS = (
+    "deleted",
+    "archived_and_deleted",
+    "would_delete",
+    "would_archive_and_delete",
+    "gone",
+    "moved",
+    "open_change",
+    "protected",
+    "blocked",
+    "failed",
+)
+
+
+def branch_prune(
+    forge: ForgePort, repo: str, ledger: tuple[LedgerBranch, ...], *, apply: bool
+) -> dict[str, object]:
+    """Prune the ledger's branches in ``repo``. Idempotent: a second run reports ``gone``."""
+    rows: list[dict[str, str]] = []
+    failures: list[str] = []
+    blocked: str | None = None
+    open_heads: set[str] = (
+        {change.head_ref for change in forge.open_changes(repo)} if ledger else set[str]()
+    )
+    for entry in ledger:
+        result = _prune_one(forge, repo, entry, open_heads, apply=apply, blocked=blocked)
+        if result.startswith("blocked:"):
+            blocked = result.removeprefix("blocked:")
+            result = "blocked"
+        elif result.startswith("failed:"):
+            failures.append(f"{entry.branch}: {result.removeprefix('failed:')}")
+            result = "failed"
+        rows.append({"branch": entry.branch, "sha": entry.sha[:12], "result": result})
+    counts = {name: sum(1 for r in rows if r["result"] == name) for name in PRUNE_RESULTS}
+    report: dict[str, object] = {
+        "repo": repo,
+        "applied": apply,
+        "counts": {name: n for name, n in counts.items() if n},
+        "branches": rows,
+    }
+    if blocked:
+        report["blocked"] = blocked
+    if failures:
+        raise RuntimeError(f"branch prune in {repo} failed for {failures}")
+    return report
+
+
+def _prune_one(
+    forge: ForgePort,
+    repo: str,
+    entry: LedgerBranch,
+    open_heads: set[str],
+    *,
+    apply: bool,
+    blocked: str | None,
+) -> str:
+    if entry.branch in PROTECTED_BRANCHES:
+        return "protected"
+    if entry.branch in open_heads:
+        return "open_change"
+    live = forge.branch_head(repo, entry.branch)
+    if live is None:
+        return "gone"
+    if live != entry.sha:
+        return "moved"
+    if not apply:
+        return "would_archive_and_delete" if entry.archive else "would_delete"
+    if blocked:
+        return f"blocked:{blocked}"
+    try:
+        if entry.archive:
+            tag = f"archive/{entry.branch}"
+            if forge.tag_head(repo, tag) is None:
+                forge.create_tag(repo, tag, entry.sha)
+            held = forge.tag_head(repo, tag)
+            if held != entry.sha:
+                return f"failed:{tag} is at {(held or 'nothing')[:12]}, not the lease"
+        forge.delete_branch(repo, entry.branch)
+    except PermissionError as error:
+        return f"blocked:{error}"
+    except Exception as error:  # one branch's failure never stops the others
+        return f"failed:{type(error).__name__}: {error}"
+    if forge.branch_head(repo, entry.branch) is not None:
+        return "failed:still present after delete"
+    return "archived_and_deleted" if entry.archive else "deleted"

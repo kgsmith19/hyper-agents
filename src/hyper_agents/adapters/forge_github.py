@@ -36,6 +36,7 @@ Transport = Callable[
 ]
 EXPIRY_HEADER = "github-authentication-token-expiration"
 _MAX_PAGES = 50
+REF_PROBE = "hyper-agents-ref-write-probe"
 
 
 def _urllib_transport(
@@ -249,7 +250,16 @@ class GithubForge:
             # GitHub rejects the empty label list with 422 only after authorizing the write,
             # so 422 proves write access; 401/403/404 do not.
             items_writable = status < 400 or status == 422
-        return Access(settings_readable, items_writable, expires)
+        # Ref write probe: create a branch at an all-zero SHA. GitHub checks the token's
+        # contents permission first (403/404 without it) and then rejects the missing object
+        # with 422, so 422 proves write access and nothing is ever created.
+        status, _ = self._status_call(
+            "POST",
+            f"/repos/{self._repo(repo)}/git/refs",
+            {"ref": f"refs/heads/{REF_PROBE}", "sha": "0" * 40},
+        )
+        refs_writable = status == 422
+        return Access(settings_readable, items_writable, expires, refs_writable)
 
     def ensure_item(self, repo: str, marker: str, title: str, body: str, open: bool) -> int:
         """Find the item whose body starts with ``marker`` (any state) and make it match;
@@ -306,6 +316,48 @@ class GithubForge:
             f"/repos/{self._repo(repo)}/actions/workflows/{quote(workflow)}/dispatches",
             {"ref": ref, "inputs": inputs},
         )
+
+    def _ref_head(self, repo: str, ref: str) -> str | None:
+        """The SHA an exact ref points at, or ``None`` when it does not exist."""
+        status, raw = self._status_call(
+            "GET", f"/repos/{self._repo(repo)}/git/ref/{quote(ref, safe='/')}"
+        )
+        if status == 404:
+            return None
+        if status >= 400:
+            raise RuntimeError(f"GET ref {ref} failed with HTTP {status}")
+        found: object = json.loads(raw) if raw else None
+        # The singular endpoint matches exactly; anything else is not this ref.
+        if not isinstance(found, dict):
+            return None
+        body = cast(dict[str, Any], found)
+        if body.get("ref") != f"refs/{ref}":
+            return None
+        return str(cast(dict[str, Any], body["object"])["sha"])
+
+    def branch_head(self, repo: str, branch: str) -> str | None:
+        return self._ref_head(repo, f"heads/{branch}")
+
+    def tag_head(self, repo: str, tag: str) -> str | None:
+        return self._ref_head(repo, f"tags/{tag}")
+
+    def create_tag(self, repo: str, tag: str, sha: str) -> None:
+        status, _ = self._status_call(
+            "POST", f"/repos/{self._repo(repo)}/git/refs", {"ref": f"refs/tags/{tag}", "sha": sha}
+        )
+        if status in (401, 403, 404):
+            raise PermissionError(f"the credential cannot create refs (HTTP {status})")
+        if status >= 400 and status != 422:  # 422: the tag already exists; the caller reads back
+            raise RuntimeError(f"create tag {tag} failed with HTTP {status}")
+
+    def delete_branch(self, repo: str, branch: str) -> None:
+        status, _ = self._status_call(
+            "DELETE", f"/repos/{self._repo(repo)}/git/refs/heads/{quote(branch, safe='/')}"
+        )
+        if status in (401, 403, 404):
+            raise PermissionError(f"the credential cannot delete refs (HTTP {status})")
+        if status >= 400 and status != 422:  # 422: already gone; the caller reads back
+            raise RuntimeError(f"delete branch {branch} failed with HTTP {status}")
 
 
 def _expiry(value: str | None) -> datetime | None:

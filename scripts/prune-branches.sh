@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Owner-run, once: prune the reconciled branches (docs/ops/branch-reconciliation-2026-11-13.md).
+# The same list lives in ops/branch_ledger.yaml, which `maintain` prunes by itself once the ops
+# token has Contents write; this script is the owner's equivalent and either may run first.
 # Each branch is deleted only if its live head still equals the recorded SHA. Superseded
 # branches are tagged archive/<branch> at that SHA first. Needs `gh auth login` as the owner.
 # Safe to re-run: missing branches and existing tags are skipped.
@@ -79,4 +81,7 @@ prune agent-engineering-standard issue/281-queue-guard-proof 482db9c7228f7336a08
 prune agent-extensions claude/sleepy-lamport-rk45pp 8e1acaf1c50c7aa68901a81762c9d5d1906bd5c0 DEL
 prune agent-extensions issue/36-queue-guard-proof 10b0bcdabe3d67e5a425e959578a9fdc33ba4a99 ARCH
 prune hyper-agents ccr-a3588a7e-gkdp4s 9e7fd0f9ad5248bed7eea731e095e1e756699eb4 DEL
+prune hyper-agents ccr-75b2b0cd-yfz3b3 185df3f33ef93bc2dfba1ec13ed3392d3a6e847e DEL
+prune hyperbolic-core ccr-75b2b0cd-yfz3b3 86573b673680e8c06f87eb3c8e8f8c66351bbb4b DEL
+prune agent-engineering-standard ccr-75b2b0cd-yfz3b3 025ac96534255815c4307d8b9325ef257706cd8f DEL
 echo "deleted=$ok skipped=$skip failed=$fail"

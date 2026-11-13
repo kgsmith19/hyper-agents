@@ -18,6 +18,9 @@ class FakeForge:
     access_by_repo: dict[str, Access] = field(default_factory=lambda: {})
     tracked: dict[str, tuple[int, str, str, bool]] = field(default_factory=lambda: {})
     notes: dict[int, list[str]] = field(default_factory=lambda: {})
+    branches: dict[str, str] = field(default_factory=lambda: {})
+    tags: dict[str, str] = field(default_factory=lambda: {})
+    refs_writable: bool = True
 
     def merged_changes_since(self, repo: str, since: datetime) -> list[Change]:
         return [c for c in self.merged if c.merged_at is not None and c.merged_at >= since]
@@ -81,3 +84,21 @@ class FakeForge:
 
     def dispatch(self, repo: str, workflow: str, ref: str, inputs: dict[str, str]) -> None:
         self.writes.append(("dispatch", dict(inputs)))
+
+    def branch_head(self, repo: str, branch: str) -> str | None:
+        return self.branches.get(branch)
+
+    def tag_head(self, repo: str, tag: str) -> str | None:
+        return self.tags.get(tag)
+
+    def create_tag(self, repo: str, tag: str, sha: str) -> None:
+        if not self.refs_writable:
+            raise PermissionError("the credential cannot create refs (HTTP 403)")
+        self.tags.setdefault(tag, sha)
+        self.writes.append(("tag", tag))
+
+    def delete_branch(self, repo: str, branch: str) -> None:
+        if not self.refs_writable:
+            raise PermissionError("the credential cannot delete refs (HTTP 403)")
+        self.branches.pop(branch, None)
+        self.writes.append(("delete_branch", branch))

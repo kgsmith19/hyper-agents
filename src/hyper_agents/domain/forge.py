@@ -46,6 +46,9 @@ class Access:
     settings_readable: bool
     items_writable: bool
     credential_expires_at: datetime | None = None
+    # Whether the credential may create and delete refs (branch prune). ``None``: not probed.
+    # Kept out of ``ok`` so a token without it still counts as a working ops token.
+    refs_writable: bool | None = None
 
     @property
     def ok(self) -> bool:
@@ -60,6 +63,30 @@ class Access:
             )
             if not held
         ]
+
+
+# Branches a prune must never touch, whatever a ledger says.
+PROTECTED_BRANCHES = frozenset({"main", "master"})
+_SHA = re.compile(r"^[0-9a-f]{40}$")
+_BRANCH = re.compile(r"^(?!/)(?!.*//)(?!.*\.\.)[A-Za-z0-9._/-]{1,200}(?<!/)$")
+
+
+@dataclass(frozen=True)
+class LedgerBranch:
+    """A reconciled branch: delete it only while its head is still ``sha`` (the lease).
+
+    ``archive`` keeps the work reachable: tag ``archive/<branch>`` at ``sha`` before deleting.
+    """
+
+    branch: str
+    sha: str
+    archive: bool = False
+
+    def __post_init__(self) -> None:
+        if not _BRANCH.fullmatch(self.branch) or self.branch in PROTECTED_BRANCHES:
+            raise ValueError(f"not a prunable branch name: {self.branch!r}")
+        if not _SHA.fullmatch(self.sha):
+            raise ValueError(f"{self.branch}: the lease must be a full 40-hex SHA")
 
 
 def closing_items(body: str, repo: str) -> list[int]:
