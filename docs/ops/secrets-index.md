@@ -6,7 +6,7 @@ checks. `dev` and `staging` are empty.
 
 ## Rules for agents
 
-- **One project for everything** (owner decision 2026-11-13; display name to become `central-vault`). Agents use CLI tools and third-party credentials from it. **No GitHub Apps.** Retired tools keep one CLI credential under `/retired/<tool>/`.
+- **One project for everything** (owner decision 2026-11-13; display name `central-vault`). Agents use CLI tools and third-party credentials from it. **No GitHub Apps.** Retired tools keep one CLI credential under `/retired/<tool>/`.
 
 - Read a secret only through a path listed here, with the identity listed for it.
 - Never print, log, or commit a value. Compare values by hash if you must.
@@ -14,25 +14,26 @@ checks. `dev` and `staging` are empty.
   migrate. Do not delete an old path: deletion needs the owner.
 - Need a credential that is not listed? Ask the owner. Do not reuse another app's key.
 
-## Layout
+## Layout (applied 2026-11-13, project `central-vault`)
+
+One Infisical project (display name `central-vault`) holds every repository's secrets. The project ID `246790d5…` and slug `hyperbolic-core-aeme2` are unchanged. Environment: `prod`. There are 55 secrets and no GitHub App keys.
 
 | Path | Contents | Read by |
 |---|---|---|
-| `/providers/anthropic/` | `LLM_KEYS_ANTHROPIC`, `BRAIN_ANTHROPIC_API_KEY`, `DEV_ANTHROPIC_API_KEY`, `REVIEW_ANTHROPIC_API_KEY` | new code; name says the consumer |
-| `/providers/openai/` | `LLM_KEYS_OPENAI`, `DEV_OPENAI_API_KEY`, `REVIEW_OPENAI_API_KEY`, `DEEP_SEARCH_OPENAI_API_KEY` | new code. The last two are the same key. |
-| `/providers/google/` | `DEV_GOOGLE_API_KEY` | new code |
-| `/providers/kilo/` | `DEV_KILO_API_KEY` | new code |
-| `/providers/hetzner/` | `HETZNER_API_TOKEN` | backups |
-| `/ops/` | `GITHUB_OPS_PAT` | ops broker (`ops.yml`, `ai-coding-harness` OIDC). Needs Secrets/Variables/Actions permissions added by the owner. |
-| `/dev/` | dev-agent keys and GitHub App | `dev-agent-dispatch.yml`, `llm-conversation.yml` (dev-agent OIDC) |
-| `/review/` | review keys and GitHub App | `llm-review*.yml`, `verify-llm-review` |
-| `/brain/` | brain keys, deploy SSH, Tailscale | brain service |
-| `/platform/broker/`, `/platform/llm-handler/` | service credentials | `services/broker`, `services/llm-handler` |
-| `/platform/backup/`, `/platform/db-backup/`, `/platform/lifeos-deploy/`, `/platform/shell-deploy/` | backup and deploy values | backup and deploy jobs |
-| `/github/`, `/ssh/`, `/tailscale/`, `/deploy/`, `/config/` | empty, reserved for the migration | none yet |
+| `/` | `CLOUDFLARE_API_TOKEN`; the `AGENT_*` bundle documents | `infra/cloudflare/cf.sh`; agent-extensions bundle |
+| `/providers/anthropic/` | `LLM_KEYS_ANTHROPIC`, `BRAIN_ANTHROPIC_API_KEY`, `DEV_ANTHROPIC_API_KEY`, `REVIEW_ANTHROPIC_API_KEY` | canonical copies for new code |
+| `/providers/openai/` | `LLM_KEYS_OPENAI`, `DEV_OPENAI_API_KEY`, `REVIEW_OPENAI_API_KEY`, `DEEP_SEARCH_OPENAI_API_KEY` (same key as review), `OPENAI_USAGE_API_KEY` | canonical copies |
+| `/providers/google/`, `/providers/kilo/`, `/providers/hetzner/` | one key each | new code; `ops/cloud/provision.sh` (Hetzner) |
+| `/ops/` | `GITHUB_OPS_PAT` | `maintain.yml`, `ops.yml` |
+| `/dev/` | `DEV_OPENAI_API_KEY`, `DEV_KILO_API_KEY`, `DEV_ANTHROPIC_API_KEY`, `DEV_GOOGLE_API_KEY` | `llm-conversation.yml`; kilo canary |
+| `/brain/` | `BRAIN_ANTHROPIC_API_KEY` | `ops/cloud/remote.sh` |
+| `/platform/core/`, `/platform/core-tunnel/`, `/platform/cloudflare/`, `/platform/backup/` | deploy SSH pair, Access service token, owner login, tunnel, TF state, restic | `ops/cloud/*.sh`, `infra/cloudflare/cf.sh` |
+| `/platform/lifeos-deploy/` | `ANTHROPIC_API_KEY` (empty but read by `remote.sh`), `LIFEOS_BRIEFING_TZ`, `LIFEOS_ICS_URLS`, `LIFEOS_OWNER_USER_ID` | `ops/cloud/remote.sh` |
+| `/retired/<system>/` | Retired tools and services, each commented with its old path. One CLI credential each for Tailscale (OAuth pair) and Supabase (`SUPABASE_ACCESS_TOKEN`, live); also `broker`, `llm-handler`, `shell-deploy`, `brain`, `lifeos`, `review` | nothing; kept for CLI access and recovery |
 
 ## Known problems (owner)
 
+- **2026-11-13 reorg applied:** the 4 GitHub App keys, the App token-mint script and 16 byte-identical duplicates are deleted, unused entries moved to `/retired`, and the project renamed to `central-vault`.
 - **2026-11-13 audit:** see [`infisical-audit-2026-11-13.md`](infisical-audit-2026-11-13.md). The per-secret catalog is in the Operations Registry. Most urgent:
   - `/ops/GITHUB_OPS_PAT` expires 2026-11-13 06:29 UTC and can't read admin settings. Regenerate it via #58 step 1.
   - The `ai-coding-harness` identity holds the project **admin** role. Split it per workload.
