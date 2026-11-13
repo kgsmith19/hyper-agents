@@ -217,6 +217,21 @@ class OwnerAdapter:
         )
         return Status(False, f"{why}; left: {', '.join(remaining)}")
 
+    def _identities_least_privilege(self, action: OwnerAction) -> Status:
+        """No workload identity may hold the project admin role. Each admin found becomes one
+        fix (identity, replacement role) for the action's resolver op."""
+        replacement = dict(action.check_params).get("replacement", "member")
+        rows = cast(list[dict[str, Any]], self._secrets.identity_roles())
+        admins = [row for row in rows if "admin" in row["roles"]]
+        if not admins:
+            return Status(True, f"no workload identity holds admin ({len(rows)} checked)")
+        names = ", ".join(sorted(row["name"] for row in admins))
+        return Status(
+            False,
+            f"admin held by {names}; target role {replacement}",
+            fixes=tuple((("identity", str(row["id"])), ("role", replacement)) for row in admins),
+        )
+
     def execute(self, action: str, params: Mapping[str, str]) -> dict[str, Any]:
         if action != "status":
             raise ValueError(f"unknown owner action: {action}")
@@ -225,6 +240,7 @@ class OwnerAdapter:
             "settings_clean": self._settings_clean,
             "secrets_present": self._secrets_present,
             "branches_pruned": self._branches_pruned,
+            "identities_least_privilege": self._identities_least_privilege,
         }
         report = tracker.actions_status(
             self._forge,

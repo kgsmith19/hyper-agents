@@ -150,3 +150,40 @@ actions:
         Nothing else. The next maintenance run (within 30 minutes) prunes the ledger and this
         item ticks itself off. To prune right away instead, run `scripts/prune-branches.sh`
         once with `gh` signed in as kgsmith19.
+
+  - id: least-privilege-identities
+    title: "No workload identity holds Infisical admin"
+    why: >-
+      ai-coding-harness held the project admin role while serving the ops broker and coding
+      sessions. The plan allows no new identities, so least privilege comes from built-in
+      roles: member can still read and write secrets but cannot administer the project.
+      Maintenance applies this itself through the infisical.identity.set_role op.
+    check: identities_least_privilege
+    params:
+      replacement: member
+    resolver:
+      op: infisical.identity.set_role
+      max_attempts: 2
+    blocker:
+      blocker_id: MB-009
+      provider: infisical
+      capability: identity role
+      resource: central-vault machine identities
+      failure_class: tooling_permission
+      attempts:
+        - "The resolver dispatches infisical.identity.set_role (R2, ops-r2) per admin identity."
+        - "This session's policy refuses direct Infisical role writes."
+      why_human_only: Only if the automated role change fails twice in a week.
+      minimum_human_action: Set the identity's project role to member in the Infisical UI.
+      required_access: Infisical org admin (Kyle)
+      safety: >-
+        The op never grants admin and reads the role back; member keeps secret read/write so
+        the broker keeps working. Kyle's org-admin login is the break-glass path.
+      validation: infisical.access.report lists no admin among workload identities.
+      owner: kgsmith19
+      source: https://github.com/kgsmith19/hyper-agents/issues/76
+    steps:
+      - >-
+        Infisical → central-vault → Access Control → Machine Identities → ai-coding-harness
+        (or the identity named above) → change the project role from Admin to Member → Save.
+      - Nothing else. The next maintenance run ticks this off.
