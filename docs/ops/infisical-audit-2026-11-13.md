@@ -1,5 +1,13 @@
 # Infisical audit, 2026-11-13 (metadata only)
 
+## Owner decisions (2026-11-13), which supersede parts of §4–§7
+
+- **One project for every repository.** It is too costly to run several. Rename the display name of `hyperbolic-core` to **`central-vault`** (alternatives: `kgs-vault`, `fleet-secrets`). Keep the project ID `246790d5…` and the slug `hyperbolic-core-aeme2`: workflows embed the ID, and agent-extensions reads `INFISICAL_PROJECT_SLUG`. §4's multi-project split is withdrawn; its boundaries become top-level folders.
+- **No GitHub Apps for agents.** Delete `DEV_GITHUB_APP_ID`, `DEV_GITHUB_APP_PRIVATE_KEY`, `REVIEW_GITHUB_APP_ID` and `REVIEW_GITHUB_APP_PRIVATE_KEY`. Their only reader (hyperbolic-core `auto-merge-issue-close-reconcile.yml`) has failed on every recent run. `AGENT_MINT_GITHUB_APP_TOKEN_MJS` goes once agent-extensions stops requiring it in the bundle.
+- **CLI and third-party access for every tool.** A retired tool keeps one CLI credential under `/retired/<tool>/`: Tailscale (one OAuth pair) and Supabase (`SUPABASE_ACCESS_TOKEN`, live HTTP 200 on 2026-11-13). Everything without a live reader moves to `/retired/<system>/`, commented with its old path. Byte-identical copies are deleted, keeping the canonical copy.
+- **Correction to §7:** `/platform/lifeos-deploy/ANTHROPIC_API_KEY` is empty but **live**: `ops/cloud/remote.sh` writes it into `lifeos.env`. It is not a deletion candidate; set a value or remove the line in `remote.sh`.
+- **Status:** the reorg plan (4 App deletions, 16 duplicate deletions, 17 moves into `/retired`, rename) is prepared and dry-run clean. The live write was refused by this session's permission policy, so it has **not** been applied. Run it with Infisical write permission.
+
 This audit contains no values. Duplicates were found by comparing 8-hex SHA-256 prefixes computed in memory. Keys are identified by public-key fingerprint. The per-secret catalog (76 rows) is in the Operations Registry → **Secrets & Access Catalog**. This file is the architecture record; `secrets-index.md` remains the agent-facing index.
 
 ## 1. Coverage

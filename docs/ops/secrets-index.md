@@ -6,6 +6,8 @@ checks. `dev` and `staging` are empty.
 
 ## Rules for agents
 
+- **One project for everything** (owner decision 2026-11-13; display name to become `central-vault`). Agents use CLI tools and third-party credentials from it. **No GitHub Apps.** Retired tools keep one CLI credential under `/retired/<tool>/`.
+
 - Read a secret only through a path listed here, with the identity listed for it.
 - Never print, log, or commit a value. Compare values by hash if you must.
 - Prefer `/providers/<provider>/` for new code. The old per-app paths still work while consumers
