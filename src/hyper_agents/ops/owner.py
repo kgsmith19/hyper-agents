@@ -26,6 +26,7 @@ from hyper_agents.domain.owner_actions import (
 )
 from hyper_agents.ops.adapters import ASSIGNABLE_ROLES
 from hyper_agents.ops.fleet import Fleet, RepoAdapter
+from hyper_agents.ops.lifeos_tokens import CONTROLLERS, PUBLIC_KEY, RENEW_WITHIN, token_state
 
 
 @dataclass(frozen=True)
@@ -218,6 +219,37 @@ class OwnerAdapter:
         )
         return Status(False, f"{why}; left: {', '.join(remaining)}")
 
+    def _controller_tokens_fresh(self, action: OwnerAction) -> Status:
+        """Each controller token verifies against the deployed public key, carries the
+        right subject and roles, and has more than the renewal margin left."""
+        params = dict(action.check_params)
+        path = params["path"]
+        try:
+            public = self._secrets.get(*PUBLIC_KEY)
+        except LookupError:
+            return Status(False, "no signing key in the vault yet")
+        problems: list[str] = []
+        soonest: datetime | None = None
+        for name in params["names"].split(","):
+            name = name.strip()
+            agent, roles = CONTROLLERS[name]
+            try:
+                held: str | None = self._secrets.get(path, name)
+            except LookupError:
+                problems.append(f"{name} missing")
+                continue
+            state, expires = token_state(held, public, agent, roles, self._now())
+            if state == "invalid":
+                problems.append(f"{name} invalid")
+            elif state == "expiring" or expires is None:
+                problems.append(f"{name} expires {expires:%Y-%m-%d}" if expires else name)
+            else:
+                soonest = expires if soonest is None else min(soonest, expires)
+        if problems:
+            return Status(False, f"at {path}: {', '.join(problems)}")
+        when = f"; next renewal before {soonest - RENEW_WITHIN:%Y-%m-%d}" if soonest else ""
+        return Status(True, f"stored at {path} and valid{when}")
+
     def _identities_least_privilege(self, action: OwnerAction) -> Status:
         """No workload identity may hold the project admin role. Each admin found becomes one
         fix (identity, replacement role) for the action's resolver op."""
@@ -244,6 +276,7 @@ class OwnerAdapter:
             "secrets_present": self._secrets_present,
             "branches_pruned": self._branches_pruned,
             "identities_least_privilege": self._identities_least_privilege,
+            "controller_tokens_fresh": self._controller_tokens_fresh,
         }
         report = tracker.actions_status(
             self._forge,

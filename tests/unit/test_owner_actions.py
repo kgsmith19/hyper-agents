@@ -14,6 +14,8 @@ from hyper_agents.domain.forge import Access
 from hyper_agents.domain.owner_actions import MARKER, OwnerAction, Status, render
 from hyper_agents.ops.core import run_op
 from hyper_agents.ops.fleet import load_fleet
+from hyper_agents.ops.lifeos_tokens import CONTROLLERS, PUBLIC_KEY, keygen
+from hyper_agents.ops.lifeos_tokens import mint as lifeos_mint
 from hyper_agents.ops.owner import OwnerAdapter, load_owner_actions
 from hyper_agents.ops.registry import load_registry
 
@@ -141,8 +143,10 @@ def test_without_the_ops_token_every_action_is_pending_and_nothing_is_dispatched
     assert report["pending"] == ["ops-token", "settings-apply", "controller-tokens"]
     details = cast(dict[str, str], report["details"])
     assert "missing administration (read settings), issues (write)" in str(details["ops-token"])
-    assert "CLAUDE_CODE_TOKEN, CHATGPT_TOKEN" in str(details["controller-tokens"])
-    assert not [w for w in fake.writes if w[0] == "dispatch"]
+    assert "no signing key in the vault yet" in str(details["controller-tokens"])
+    ops = [cast(dict[str, str], w[1])["op"] for w in fake.writes if w[0] == "dispatch"]
+    # No settings run without the token; only the token resolver may start (#82).
+    assert ops == ["lifeos.controller_tokens.renew"]
 
 
 def test_with_the_token_drift_is_dispatched_and_tokens_tick_off() -> None:
@@ -153,8 +157,17 @@ def test_with_the_token_drift_is_dispatched_and_tokens_tick_off() -> None:
             repo: Access(True, True, NOW + timedelta(days=300)) for repo in fleet.repos
         },
     )
+    private, public = keygen()
     vault = Vault(
-        {("/lifeos/agents", "CLAUDE_CODE_TOKEN"): "t1", ("/lifeos/agents", "CHATGPT_TOKEN"): "t2"}
+        {
+            PUBLIC_KEY: public,
+            ("/lifeos/agents", "CLAUDE_CODE_TOKEN"): lifeos_mint(
+                private, *CONTROLLERS["CLAUDE_CODE_TOKEN"], NOW
+            ),
+            ("/lifeos/agents", "CHATGPT_TOKEN"): lifeos_mint(
+                private, *CONTROLLERS["CHATGPT_TOKEN"], NOW
+            ),
+        }
     )
     report = _owner(fake, vault).execute("status", {})
     assert report["pending"] == ["settings-apply"]

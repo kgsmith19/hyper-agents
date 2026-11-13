@@ -141,6 +141,57 @@ class InfisicalAdapter:
                 return str(item["secretValue"])
         raise LookupError(f"{name} not found at {path}")
 
+    def upsert_secret(self, path: str, name: str, value: str) -> None:
+        """Create or update one prod secret. PATCH first (the common case); only when the
+        secret does not exist, create the folder path and POST. Any other error is
+        reported with its own status. The value goes only into the request body."""
+        if not value:
+            raise ValueError(f"refusing to store an empty value for {path}/{name}")
+        token = self._access_token()
+        body = {
+            "workspaceId": self._project_id,
+            "environment": INFISICAL_ENVIRONMENT,
+            "secretPath": path,
+            "secretValue": value,
+            "type": "shared",
+        }
+        url = f"{INFISICAL_API}/v3/secrets/raw/{quote(name)}"
+        try:
+            self._send("PATCH", url, token, body)
+        except urllib.error.HTTPError as error:
+            if error.code not in (400, 404):  # 404/400: the secret (or folder) is absent
+                raise RuntimeError(f"could not update {path}/{name} (HTTP {error.code})") from None
+            self._ensure_folders(path, token)
+            try:
+                self._send("POST", url, token, body)
+            except urllib.error.HTTPError as create_error:
+                raise RuntimeError(
+                    f"could not create {path}/{name} (HTTP {create_error.code})"
+                ) from None
+        self._cache.pop(path, None)  # the next read sees the new value
+
+    def _ensure_folders(self, path: str, token: str) -> None:
+        parent = "/"
+        for part in [p for p in path.split("/") if p]:
+            try:
+                self._send(
+                    "POST",
+                    f"{INFISICAL_API}/v1/folders",
+                    token,
+                    {
+                        "workspaceId": self._project_id,
+                        "environment": INFISICAL_ENVIRONMENT,
+                        "name": part,
+                        "path": parent,
+                    },
+                )
+            except urllib.error.HTTPError as error:
+                if error.code not in (400, 409):  # exists already
+                    raise RuntimeError(
+                        f"could not create folder {part} (HTTP {error.code})"
+                    ) from None
+            parent = parent.rstrip("/") + "/" + part
+
     def _memberships_url(self) -> str:
         return f"{INFISICAL_API}/v1/projects/{quote(self._project_id)}/identity-memberships"
 
