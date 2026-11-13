@@ -5,7 +5,7 @@
   and post at most one reminder per week while anything is pending.
 - ``request_settings_apply``: once the credential can read settings, start one gated
   settings-apply run per drifting repository, at most once per distinct drift. Each run
-  still waits for the owner's approval; this only saves hunting for the button.
+  runs in the ops-r2 environment without a human reviewer (owner decision 2026-11-13).
 
 A check that raises is reported as "check failed", never as done.
 """
@@ -112,6 +112,6 @@ def request_settings_apply(
                 item,
                 marker,
                 f"Started a settings-apply run for {target} ({', '.join(sorted(drift))}). "
-                "It waits for your approval.",
+                "It runs without a reviewer.",
             )
     return requested

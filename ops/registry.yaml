@@ -1,6 +1,6 @@
 # Typed operation registry for the ops broker. Changing this file is a reviewed PR.
 # Tiers: R0 read (auto), R1 reversible write (dry-run then apply), R2 secret or live write
-# (requires the `ops-r2` GitHub Environment with the owner as reviewer).
+# (runs in the `ops-r2` GitHub Environment: OIDC-scoped, main only, no required reviewer).
 # Secret values are never parameters. A secret is referenced by Infisical path and name.
 
 ops:
@@ -120,7 +120,7 @@ ops:
 
   # Repository maintenance (provider-neutral; the hosting provider is chosen in ops/fleet.yaml).
   # R0 report reads only. R1 close_sweep and change_health are reversible writes. R2 settings
-  # apply changes repository settings and waits for the owner through ops-r2.
+  # apply changes repository settings through the ops-r2 environment (no reviewer).
   - id: repo.report
     adapter: repo
     action: report
@@ -163,8 +163,8 @@ ops:
         enum: [kgsmith19/agent-engineering-standard, kgsmith19/agent-extensions, kgsmith19/hyper-agents, kgsmith19/hyperbolic-core]
 
   # Owner actions (ops/owner_actions.yaml): live-checked checklist of the few owner-only steps.
-  # R1: rewrites one tracker item, posts at most one reminder a week, and starts gated
-  # settings-apply runs that still wait for the owner's ops-r2 approval.
+  # R1: rewrites one tracker item, posts at most one reminder a week, and starts one
+  # settings-apply run (R2, ops-r2 environment, no reviewer) per distinct drift.
   - id: owner.actions_status
     adapter: owner
     action: status

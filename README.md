@@ -8,7 +8,7 @@ with a receipt once its evidence is signed off.
 - **Owned roles:** Planner, Builder, Reviewer and Verifier, plus the team roles Owner Stand-in, Senior
   Dev, Dev, Tester and Business Analyst (#25). This repository is their only canonical source. The
   Owner Stand-in writes nothing: its admin actions are typed ops-broker requests (`ops/registry.yaml`),
-  and R2 operations still wait for the owner's `ops-r2` approval.
+  and R2 operations run in the `ops-r2` environment without a human reviewer.
 - **Execution:** the [OpenHands Software Agent SDK](https://github.com/OpenHands/software-agent-sdk)
   behind a narrow executor port, in Docker workspaces.
 - **Runs locally:** SQLite WAL with a single controller process. The daemon is persistent; role
