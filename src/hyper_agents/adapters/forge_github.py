@@ -246,7 +246,9 @@ class GithubForge:
                 f"/repos/{self._repo(repo)}/issues/{newest[0]['number']}/labels",
                 {"labels": []},
             )
-            items_writable = status < 400
+            # GitHub rejects the empty label list with 422 only after authorizing the write,
+            # so 422 proves write access; 401/403/404 do not.
+            items_writable = status < 400 or status == 422
         return Access(settings_readable, items_writable, expires)
 
     def ensure_item(self, repo: str, marker: str, title: str, body: str, open: bool) -> int:
