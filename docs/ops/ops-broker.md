@@ -57,7 +57,7 @@ not secrets. They are committed in the workflows, so changing them is a reviewed
 | Identity | Project role | OIDC subject (hyper-agents part) | Used by |
 |---|---|---|---|
 | `ai-coding-harness` (`813dda9e-a986-4448-aa6f-f46e0365deca`) | admin | `repo:kgsmith19@64936641/hyper-agents@1435147762:{ref:refs/heads/main,environment:ops-r2}`, TTL 3600 | `ops.yml` apply jobs (`INFISICAL_OPS_IDENTITY_ID`) |
-| `dev-agent` (`3801b514-b70d-45cb-99d2-221f9a9ceb2c`) | viewer | `…/hyper-agents@1435147762:ref:refs/heads/main`, added to its hyperbolic-core subjects | `llm-conversation.yml` (`INFISICAL_IDENTITY_ID`) |
+| `dev-agent` (`3801b514-b70d-45cb-99d2-221f9a9ceb2c`) | viewer | `…/hyper-agents@1435147762:ref:refs/heads/main`, added to its hyperbolic-core subjects | `llm-conversation.yml` (`INFISICAL_IDENTITY_ID`), `maintain.yml` (`INFISICAL_OPS_IDENTITY_ID`, read-only; see `access-model.md`) |
 
 Audience for both: `https://github.com/kgsmith19`. The project is hyperbolic-core
 (`246790d5-245f-4f4a-a730-5dda5e882b05`). If the plan is upgraded, split these into dedicated

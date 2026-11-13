@@ -83,7 +83,7 @@ That alone is not evidence of non-use: the audit log is unavailable.
 
 | Identity | Role | Used by |
 |---|---|---|
-| `ai-coding-harness` (`813dda9e…`) | **admin** | coding-agent sessions, `maintain.yml`, `ops.yml` |
+| `ai-coding-harness` (`813dda9e…`) | **admin** | coding-agent sessions, `ops.yml` (`maintain.yml` moved to `dev-agent` on 2026-11-13; see `access-model.md`) |
 | `review-gate` | viewer | hyperbolic-core review lane (`/review/`) |
 | `dev-agent` | viewer | dev-agent and `llm-conversation.yml` (`/dev/`) |
 | `brain-deploy`, `broker-deploy`, `llm-handler-deploy`, `shell-deploy`, `lifeos-deploy` | viewer | per-service deploys |
@@ -96,7 +96,7 @@ Viewer roles are **project-wide**: each deploy identity can read every prod secr
 Do one credential family at a time: create the canonical entry → import it at the consumer path → cut over → capability-test → observe 7 days → retire the copy.
 
 1. **Ops PAT (now):** the owner regenerates it, fleet-only, with Administration read+write and Issues write (#58 step 1). `maintain` verifies it. Then replace it with a GitHub App (P-43).
-2. **Split `ai-coding-harness`.** Create the three identities above, move the workflow `INFISICAL_OPS_IDENTITY_ID`, then downgrade the old identity to viewer and finally remove it.
+2. **Split `ai-coding-harness`** (superseded by `access-model.md`: the plan limit allows no new identities). Create the three identities above, move the workflow `INFISICAL_OPS_IDENTITY_ID`, then downgrade the old identity to viewer and finally remove it.
 3. **Tailscale.** Create `/providers/tailscale` as canonical, import it into the 5 paths, then consider one OAuth client per workload.
 4. **LLM keys.** Make `/providers/{anthropic,openai,google,kilo}` canonical and import them. Split the shared OpenAI review/deep-search key into two keys.
 5. **`BROKER_CALLER_TOKEN`.** Keep one canonical entry and import it at the other path.
