@@ -62,13 +62,17 @@ def actions_status(
         "pending": [a.id for a in open_actions],
         "done": [a.id for a in actions if a not in open_actions],
         "details": {key: status.detail for key, status in statuses.items()},
-        "blockers": [
+    }
+    # Report-only: a record that will not build never stops the checklist update below.
+    try:
+        report["blockers"] = [
             blocker.model_dump(mode="json")
             for blocker in dedupe(
                 blocker_record(a, statuses[a.id], now) for a in actions if a.blocker
             )
-        ],
-    }
+        ]
+    except ValueError as error:  # pydantic's ValidationError is a ValueError
+        report["blockers_error"] = type(error).__name__
     if not apply:
         return report
     number = forge.ensure_item(

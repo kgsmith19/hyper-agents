@@ -10,7 +10,7 @@ from pydantic import ValidationError
 
 from hyper_agents.adapters.fake_forge import FakeForge
 from hyper_agents.application.owner_actions import actions_status
-from hyper_agents.domain.manual_blocker import ManualBlocker, dedupe, fingerprint
+from hyper_agents.domain.manual_blocker import FailureClass, ManualBlocker, dedupe, fingerprint
 from hyper_agents.domain.owner_actions import BlockerSpec, OwnerAction, Status
 from hyper_agents.ops.owner import load_owner_actions
 
@@ -71,7 +71,7 @@ def test_the_contract_is_strict() -> None:
 
 def test_fingerprint_ignores_case_and_spacing_but_not_meaning() -> None:
     assert record().fingerprint == fingerprint(
-        " GitHub", "Branch Delete ", "kgsmith19/hyper-agents", "AUTHORIZATION"
+        " GitHub", "Branch \t Delete ", "kgsmith19/hyper-agents", "AUTHORIZATION"
     )
     assert record().fingerprint != record(resource="kgsmith19/hyperbolic-core").fingerprint
     assert record().fingerprint != record(failure_class="consent").fingerprint
@@ -90,7 +90,7 @@ SPEC = BlockerSpec(
     provider="github",
     capability="branch delete",
     resource="fleet",
-    failure_class="authorization",
+    failure_class=FailureClass.AUTHORIZATION,
     attempts=("tried the ops token",),
     why_human_only="owner-only",
     minimum_human_action="edit the token",
@@ -139,3 +139,30 @@ def test_the_loader_refuses_a_duplicate_blocker_and_unknown_keys(tmp_path: Path)
     copy.write_text(raw.replace("      owner: kgsmith19\n", "      ownr: kgsmith19\n", 1))
     with pytest.raises(TypeError):
         load_owner_actions(copy)
+    for bad, why in (
+        ("      owner: kgsmith19\n", "      owner:\n"),  # empty value is not the string "None"
+        ("      attempts:\n", "      attempts: tried\n      unused:\n"),  # scalar attempts
+    ):
+        copy.write_text(raw.replace(bad, why, 1))
+        with pytest.raises(ValueError):
+            load_owner_actions(copy)
+
+
+def test_a_crashed_check_is_watch_and_a_bad_record_never_stops_the_checklist() -> None:
+    action = OwnerAction("prune", "Prune", "why", ("step",), "c", blocker=SPEC)
+    forge = FakeForge()
+    report = actions_status(
+        forge, "kgsmith19/hyper-agents", (action,), {}, now=NOW, apply=True
+    )  # no check registered: "check failed: unknown check"
+    blockers = cast(list[dict[str, Any]], report["blockers"])
+    assert blockers[0]["status"] == "watch"
+    twice = OwnerAction("again", "Again", "why", ("step",), "c", blocker=SPEC)
+    report = actions_status(
+        forge,
+        "kgsmith19/hyper-agents",
+        (action, twice),
+        {"c": lambda _: Status(False, "x")},
+        now=NOW,
+        apply=True,
+    )
+    assert report["blockers_error"] == "ValueError" and "item" in report

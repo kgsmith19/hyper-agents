@@ -8,7 +8,9 @@ regresses. Nothing here names a provider: steps are owner-facing text from confi
 from dataclasses import dataclass
 from datetime import datetime
 
-from hyper_agents.domain.manual_blocker import BlockerStatus, ManualBlocker
+from hyper_agents.domain.manual_blocker import MAX_TEXT, BlockerStatus, FailureClass, ManualBlocker
+
+CHECK_FAILED = "check failed"
 
 MARKER = "<!-- hyper-agents:owner-actions:v1 -->"
 TITLE = "Owner actions (self-updating checklist)"
@@ -22,7 +24,7 @@ class BlockerSpec:
     provider: str
     capability: str
     resource: str
-    failure_class: str
+    failure_class: FailureClass
     attempts: tuple[str, ...]
     why_human_only: str
     minimum_human_action: str
@@ -60,8 +62,8 @@ def blocker_record(action: OwnerAction, status: "Status", now: datetime) -> Manu
         provider=spec.provider,
         capability=spec.capability,
         resource=spec.resource,
-        failure_class=spec.failure_class,  # pyright: ignore[reportArgumentType]
-        exact_evidence=status.detail,
+        failure_class=spec.failure_class,
+        exact_evidence=(status.detail or "no detail")[:MAX_TEXT],
         attempts=spec.attempts,
         why_human_only=spec.why_human_only,
         minimum_human_action=spec.minimum_human_action,
@@ -73,9 +75,18 @@ def blocker_record(action: OwnerAction, status: "Status", now: datetime) -> Manu
         detector=f"check:{action.check}",
         owner=spec.owner,
         freshness=now,
-        status=BlockerStatus.RESOLVED if status.done else BlockerStatus.OPEN,
+        status=_blocker_status(status),
         source=spec.source,
     )
+
+
+def _blocker_status(status: "Status") -> BlockerStatus:
+    """A check that crashed proves nothing about the human boundary: watch, not open."""
+    if status.done:
+        return BlockerStatus.RESOLVED
+    if status.detail.startswith(CHECK_FAILED):
+        return BlockerStatus.WATCH
+    return BlockerStatus.OPEN
 
 
 def reminder_marker(now: datetime) -> str:

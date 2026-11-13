@@ -14,7 +14,8 @@ from typing import Annotated
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints
 
-Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=4000)]
+MAX_TEXT = 4000
+Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=MAX_TEXT)]
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
 
 
@@ -66,7 +67,9 @@ class ManualBlocker(BaseModel):
 
 def fingerprint(provider: str, capability: str, resource: str, failure_class: str) -> str:
     """Stable identity: case and surrounding space never make two blockers out of one."""
-    key = "|".join(p.strip().lower() for p in (provider, capability, resource, failure_class))
+    key = "|".join(
+        " ".join(p.split()).lower() for p in (provider, capability, resource, failure_class)
+    )
     return hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
 
 
