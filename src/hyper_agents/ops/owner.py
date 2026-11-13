@@ -4,7 +4,7 @@ Loads ``ops/owner_actions.yaml`` and supplies the live checks it names. The chec
 forge and the secrets store only through the fleet's ports, so no provider is named here.
 """
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -17,7 +17,13 @@ from hyper_agents.application import repo_maintenance as maintenance
 from hyper_agents.application.ports import ForgePort
 from hyper_agents.domain.forge import Access
 from hyper_agents.domain.manual_blocker import FailureClass, dedupe
-from hyper_agents.domain.owner_actions import BlockerSpec, OwnerAction, Status, blocker_record
+from hyper_agents.domain.owner_actions import (
+    BlockerSpec,
+    OwnerAction,
+    Resolver,
+    Status,
+    blocker_record,
+)
 from hyper_agents.ops.fleet import Fleet, RepoAdapter
 
 
@@ -58,7 +64,29 @@ def _blocker_spec(raw: object) -> BlockerSpec | None:
     )
 
 
-def load_owner_actions(path: Path) -> TrackerConfig:
+def _resolver(raw: object, known_ops: Collection[str] | None) -> Resolver | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError("resolver must be a mapping")
+    spec = cast(dict[str, Any], raw)
+    unknown = set(spec) - {"op", "max_attempts"}
+    if unknown:
+        raise ValueError(f"resolver has unknown keys {sorted(unknown)}")
+    op = spec.get("op")
+    if not isinstance(op, str) or not op:
+        raise ValueError("resolver.op must be a registered op id")
+    if known_ops is not None and op not in known_ops:
+        raise ValueError(f"resolver.op {op!r} is not in the op registry")
+    attempts = spec.get("max_attempts", 2)
+    if not isinstance(attempts, int) or isinstance(attempts, bool) or not 1 <= attempts <= 5:
+        raise ValueError("resolver.max_attempts must be an integer from 1 to 5")
+    return Resolver(op=op, max_attempts=attempts)
+
+
+def load_owner_actions(path: Path, known_ops: Collection[str] | None = None) -> TrackerConfig:
+    """Load the checklist. With ``known_ops`` (the op registry's ids), a resolver naming an
+    unregistered op fails the load."""
     raw = cast(dict[str, Any], yaml.safe_load(path.read_text(encoding="utf-8")))
     head = cast(dict[str, Any], raw["tracker"])
     actions: list[OwnerAction] = []
@@ -78,6 +106,7 @@ def load_owner_actions(path: Path) -> TrackerConfig:
                 check=str(entry["check"]),
                 check_params=tuple(sorted((str(k), str(v)) for k, v in params.items())),
                 blocker=_blocker_spec(entry.get("blocker")),
+                resolver=_resolver(entry.get("resolver"), known_ops),
             )
         )
     # Validate every contract now (a typo fails the load, not a maintenance run) and refuse
@@ -197,6 +226,8 @@ class OwnerAdapter:
             checks,
             now=self._now(),
             apply=True,
+            workflow=self._config.broker_workflow,
+            ref=self._config.broker_ref,
         )
         access = self._fleet_access()
         if all(a.settings_readable for a in access.values()) and "item" in report:

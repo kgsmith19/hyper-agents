@@ -73,7 +73,9 @@ def main(argv: list[str] | None = None) -> int:
         "cli": CliAdapter(),
         "repo": RepoAdapter(load_fleet(args.fleet), infisical),
         "owner": OwnerAdapter(
-            load_fleet(args.fleet), load_owner_actions(args.owner_actions), infisical
+            load_fleet(args.fleet),
+            load_owner_actions(args.owner_actions, set(load_registry(args.registry))),
+            infisical,
         ),
     }
     try:
@@ -116,7 +118,10 @@ def _maintain(registry_path: Path, fleet_path: Path, owner_actions_path: Path) -
     adapters: dict[str, Any] = {
         "repo": repo_adapter,
         "owner": OwnerAdapter(
-            fleet, load_owner_actions(owner_actions_path), infisical, repos=repo_adapter
+            fleet,
+            load_owner_actions(owner_actions_path, set(registry)),
+            infisical,
+            repos=repo_adapter,
         ),
     }
     runs: list[tuple[str, dict[str, str]]] = [
