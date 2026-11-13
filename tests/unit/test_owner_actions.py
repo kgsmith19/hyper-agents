@@ -267,3 +267,17 @@ def test_github_note_dedupe_reads_every_page_of_comments() -> None:
     assert adapter.note_exists(repo, 58, marker) is True
     adapter.upsert_note(repo, 58, marker, "hi")
     assert all(method == "GET" for method, _ in calls)  # found on page 2: nothing posted
+
+
+def test_github_access_probe_reads_422_as_writable_and_403_as_not() -> None:
+    """GitHub validates the empty label list only after authorizing the write (live 2026-11-13)."""
+    repo = "kgsmith19/hyper-agents"
+    for status, writable in ((422, True), (200, True), (403, False), (404, False)):
+        adapter, _ = _github(
+            {
+                ("GET", f"/repos/{repo}"): (200, {"delete_branch_on_merge": True}),
+                ("GET", f"/repos/{repo}/issues"): (200, [{"number": 58}]),
+                ("POST", f"/repos/{repo}/issues/58/labels"): (status, {"message": "x"}),
+            }
+        )
+        assert adapter.access(repo).items_writable is writable, status
