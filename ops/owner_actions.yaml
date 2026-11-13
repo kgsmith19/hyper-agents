@@ -1,6 +1,8 @@
 # Owner actions: the only steps that need the owner. `owner.actions_status` (run by
 # `maintain`) checks each one live and keeps one checklist item current in `tracker.repo`.
 # Add a future owner step as one entry here; checks are named in hyper_agents/ops/owner.py.
+# `blocker:` is the action's ManualBlocker contract (schemas/manual-blocker.schema.json); the
+# live check supplies evidence and status, and two actions may never share a fingerprint.
 tracker:
   repo: kgsmith19/hyper-agents
   broker_workflow: ops.yml
@@ -17,6 +19,22 @@ actions:
       write is for deleting reconciled branches (lease-checked); secrets, variables and actions
       write are for the Ops broker's R1/R2 ops, each still gated.
     check: forge_access
+    blocker:
+      blocker_id: MB-002
+      provider: github
+      capability: fleet maintenance token
+      resource: "fine-grained PAT 'hyper-agents ops' (Infisical /ops/GITHUB_OPS_PAT)"
+      failure_class: authorization
+      attempts:
+        - "GitHub Apps were retired (owner decision 2026-11-13), so there is no App token to mint."
+        - "GitHub has no API that creates or renews a fine-grained PAT."
+      why_human_only: Only the account owner can create or renew a fine-grained personal access token.
+      minimum_human_action: Generate the token from the pre-filled link and store it in Infisical.
+      required_access: Owner GitHub login and Infisical write on /ops
+      safety: The old token keeps working until it expires; a failed new token changes nothing.
+      validation: The next maintenance run reads settings and writes Items in all fleet repositories.
+      owner: kgsmith19
+      source: https://github.com/kgsmith19/hyper-agents/issues/58
     steps:
       - >-
         Open the [pre-filled token page](https://github.com/settings/personal-access-tokens/new?name=hyper-agents+ops&description=hyper-agents+ops+broker+and+fleet+maintenance+%28owner+actions+tracker%29&target_name=kgsmith19&expires_in=366&administration=write&contents=write&issues=write&pull_requests=write&secrets=write&variables=write&actions=write).
@@ -38,6 +56,22 @@ actions:
       then conflict and get no CI. Agents start the settings runs; they must run without a
       human click (owner decision 2026-11-13).
     check: settings_clean
+    blocker:
+      blocker_id: MB-003
+      provider: github
+      capability: repository settings apply
+      resource: hyper-agents environment ops-r2
+      failure_class: approval_gate
+      attempts:
+        - "Maintenance dispatches one settings-apply run per distinct drift."
+        - "The runs waited on the ops-r2 required reviewer."
+      why_human_only: Removing a required reviewer is an owner settings change.
+      minimum_human_action: Untick Required reviewers on ops-r2 once.
+      required_access: Owner admin on hyper-agents
+      safety: The environment and its main-only branch rule stay; only the reviewer goes.
+      validation: Live settings match the declared profile in every fleet repository.
+      owner: kgsmith19
+      source: https://github.com/kgsmith19/hyper-agents/issues/58
     steps:
       - >-
         One time: GitHub → hyper-agents → Settings → Environments → `ops-r2` → untick
@@ -53,6 +87,22 @@ actions:
       (communications, household_operations) each need their own agents:request token
       to ask the LifeOS role gate for decisions (hyperbolic-core #596).
     check: secrets_present
+    blocker:
+      blocker_id: MB-004
+      provider: lifeos
+      capability: controller agent tokens
+      resource: Infisical /lifeos/agents (CLAUDE_CODE_TOKEN, CHATGPT_TOKEN)
+      failure_class: approval_gate
+      attempts:
+        - "The hyperbolic-core controller mint run is automated and renews every ~25 days."
+        - "Its first mint waits on the owner-approval environment by design."
+      why_human_only: The first mint establishes trust for two agent identities; the owner approves it once.
+      minimum_human_action: Approve the controller-token run once; paste the ChatGPT token into its connector once.
+      required_access: Owner approval on hyperbolic-core owner-approval; ChatGPT connector UI
+      safety: Tokens are minted straight into the vault and never printed; revoking them in LifeOS is immediate.
+      validation: Both names exist at /lifeos/agents and one scoped low-risk request succeeds.
+      owner: kgsmith19
+      source: https://github.com/kgsmith19/hyperbolic-core/issues/573
     params:
       path: /lifeos/agents
       names: CLAUDE_CODE_TOKEN,CHATGPT_TOKEN
@@ -73,6 +123,24 @@ actions:
       superseded work archive/<branch> first. Deleting a branch needs Contents write on the
       ops token, which it does not have yet.
     check: branches_pruned
+    blocker:
+      blocker_id: MB-008
+      provider: github
+      capability: branch delete
+      resource: fleet branches in ops/branch_ledger.yaml
+      failure_class: authorization
+      attempts:
+        - "repo.branch_prune runs every maintenance run and reports blocked (no Contents write)."
+        - "Session pushes reach only the session branch, so a session cannot delete refs."
+      why_human_only: Only the owner can widen a fine-grained token's permissions.
+      minimum_human_action: Set Contents to Read and write on the existing ops token.
+      required_access: Owner GitHub login
+      safety: >-
+        Deletes only at the recorded SHA, archive tag first where listed, never a branch an open
+        change uses; the token value does not change.
+      validation: Every ledger branch is gone and archive tags sit at the recorded SHAs.
+      owner: kgsmith19
+      source: https://github.com/kgsmith19/hyper-agents/issues/72
     steps:
       - >-
         GitHub → Settings → Developer settings → Fine-grained tokens → **hyper-agents ops** →

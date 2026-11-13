@@ -1,0 +1,167 @@
+{
+  "$defs": {
+    "BlockerStatus": {
+      "enum": [
+        "open",
+        "resolved",
+        "watch"
+      ],
+      "title": "BlockerStatus",
+      "type": "string"
+    },
+    "FailureClass": {
+      "description": "Why no agent can take the step. Anything else is automatable and not a blocker.",
+      "enum": [
+        "authorization",
+        "consent",
+        "approval_gate",
+        "physical_device",
+        "regulated_decision",
+        "provider_unavailable",
+        "tooling_permission"
+      ],
+      "title": "FailureClass",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "attempts": {
+      "items": {
+        "maxLength": 4000,
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Attempts",
+      "type": "array"
+    },
+    "blocker_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{1,63}$",
+      "title": "Blocker Id",
+      "type": "string"
+    },
+    "capability": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Capability",
+      "type": "string"
+    },
+    "detector": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Detector",
+      "type": "string"
+    },
+    "exact_evidence": {
+      "maxLength": 4000,
+      "minLength": 1,
+      "title": "Exact Evidence",
+      "type": "string"
+    },
+    "exact_steps": {
+      "items": {
+        "maxLength": 4000,
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Exact Steps",
+      "type": "array"
+    },
+    "failure_class": {
+      "$ref": "#/$defs/FailureClass"
+    },
+    "freshness": {
+      "format": "date-time",
+      "title": "Freshness",
+      "type": "string"
+    },
+    "minimum_human_action": {
+      "maxLength": 4000,
+      "minLength": 1,
+      "title": "Minimum Human Action",
+      "type": "string"
+    },
+    "owner": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Owner",
+      "type": "string"
+    },
+    "provider": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Provider",
+      "type": "string"
+    },
+    "required_access": {
+      "maxLength": 4000,
+      "minLength": 1,
+      "title": "Required Access",
+      "type": "string"
+    },
+    "resource": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Resource",
+      "type": "string"
+    },
+    "resume_token": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Resume Token",
+      "type": "string"
+    },
+    "safety": {
+      "maxLength": 4000,
+      "minLength": 1,
+      "title": "Safety",
+      "type": "string"
+    },
+    "source": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Source",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/BlockerStatus"
+    },
+    "validation": {
+      "maxLength": 4000,
+      "minLength": 1,
+      "title": "Validation",
+      "type": "string"
+    },
+    "why_human_only": {
+      "maxLength": 4000,
+      "minLength": 1,
+      "title": "Why Human Only",
+      "type": "string"
+    }
+  },
+  "required": [
+    "blocker_id",
+    "provider",
+    "capability",
+    "resource",
+    "failure_class",
+    "exact_evidence",
+    "attempts",
+    "why_human_only",
+    "minimum_human_action",
+    "exact_steps",
+    "required_access",
+    "safety",
+    "validation",
+    "resume_token",
+    "detector",
+    "owner",
+    "freshness",
+    "status",
+    "source"
+  ],
+  "title": "ManualBlocker",
+  "type": "object"
+}

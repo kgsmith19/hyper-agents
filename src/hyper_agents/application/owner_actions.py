@@ -16,11 +16,13 @@ from collections.abc import Callable, Mapping
 from datetime import datetime
 
 from hyper_agents.application.ports import ForgePort
+from hyper_agents.domain.manual_blocker import dedupe
 from hyper_agents.domain.owner_actions import (
     MARKER,
     TITLE,
     OwnerAction,
     Status,
+    blocker_record,
     pending,
     reminder_marker,
     reminder_text,
@@ -60,6 +62,12 @@ def actions_status(
         "pending": [a.id for a in open_actions],
         "done": [a.id for a in actions if a not in open_actions],
         "details": {key: status.detail for key, status in statuses.items()},
+        "blockers": [
+            blocker.model_dump(mode="json")
+            for blocker in dedupe(
+                blocker_record(a, statuses[a.id], now) for a in actions if a.blocker
+            )
+        ],
     }
     if not apply:
         return report

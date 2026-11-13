@@ -16,7 +16,8 @@ from hyper_agents.application import owner_actions as tracker
 from hyper_agents.application import repo_maintenance as maintenance
 from hyper_agents.application.ports import ForgePort
 from hyper_agents.domain.forge import Access
-from hyper_agents.domain.owner_actions import OwnerAction, Status
+from hyper_agents.domain.manual_blocker import dedupe
+from hyper_agents.domain.owner_actions import BlockerSpec, OwnerAction, Status, blocker_record
 from hyper_agents.ops.fleet import Fleet, RepoAdapter
 
 
@@ -28,6 +29,17 @@ class TrackerConfig:
     settings_apply_op: str
     expiry_warning_days: int
     actions: tuple[OwnerAction, ...]
+
+
+def _blocker_spec(raw: object) -> BlockerSpec | None:
+    if raw is None:
+        return None
+    spec = cast(dict[str, Any], raw)
+    text = {k: str(v).strip() for k, v in spec.items() if k != "attempts"}
+    return BlockerSpec(
+        attempts=tuple(str(a).strip() for a in cast(list[Any], spec.get("attempts") or [])),
+        **text,  # unknown or missing keys fail here
+    )
 
 
 def load_owner_actions(path: Path) -> TrackerConfig:
@@ -49,8 +61,13 @@ def load_owner_actions(path: Path) -> TrackerConfig:
                 steps=tuple(str(step).strip() for step in entry["steps"]),
                 check=str(entry["check"]),
                 check_params=tuple(sorted((str(k), str(v)) for k, v in params.items())),
+                blocker=_blocker_spec(entry.get("blocker")),
             )
         )
+    # Validate every contract now (a typo fails the load, not a maintenance run) and refuse
+    # two actions that are the same blocker.
+    probe = Status(False, "loaded")
+    dedupe(blocker_record(a, probe, datetime.now(UTC)) for a in actions if a.blocker)
     return TrackerConfig(
         repo=str(head["repo"]),
         broker_workflow=str(head["broker_workflow"]),

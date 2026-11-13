@@ -8,8 +8,29 @@ regresses. Nothing here names a provider: steps are owner-facing text from confi
 from dataclasses import dataclass
 from datetime import datetime
 
+from hyper_agents.domain.manual_blocker import BlockerStatus, ManualBlocker
+
 MARKER = "<!-- hyper-agents:owner-actions:v1 -->"
 TITLE = "Owner actions (self-updating checklist)"
+
+
+@dataclass(frozen=True)
+class BlockerSpec:
+    """The static half of an action's ManualBlocker record; the check supplies the rest."""
+
+    blocker_id: str
+    provider: str
+    capability: str
+    resource: str
+    failure_class: str
+    attempts: tuple[str, ...]
+    why_human_only: str
+    minimum_human_action: str
+    required_access: str
+    safety: str
+    validation: str
+    owner: str
+    source: str
 
 
 @dataclass(frozen=True)
@@ -20,12 +41,41 @@ class OwnerAction:
     steps: tuple[str, ...]
     check: str
     check_params: tuple[tuple[str, str], ...] = ()
+    blocker: BlockerSpec | None = None
 
 
 @dataclass(frozen=True)
 class Status:
     done: bool
     detail: str
+
+
+def blocker_record(action: OwnerAction, status: "Status", now: datetime) -> ManualBlocker:
+    """The action as a ManualBlocker: evidence and status come from its live check."""
+    spec = action.blocker
+    if spec is None:
+        raise ValueError(f"owner action {action.id!r} has no blocker spec")
+    return ManualBlocker(
+        blocker_id=spec.blocker_id,
+        provider=spec.provider,
+        capability=spec.capability,
+        resource=spec.resource,
+        failure_class=spec.failure_class,  # pyright: ignore[reportArgumentType]
+        exact_evidence=status.detail,
+        attempts=spec.attempts,
+        why_human_only=spec.why_human_only,
+        minimum_human_action=spec.minimum_human_action,
+        exact_steps=action.steps,
+        required_access=spec.required_access,
+        safety=spec.safety,
+        validation=spec.validation,
+        resume_token=f"owner.actions_status:{action.id}",
+        detector=f"check:{action.check}",
+        owner=spec.owner,
+        freshness=now,
+        status=BlockerStatus.RESOLVED if status.done else BlockerStatus.OPEN,
+        source=spec.source,
+    )
 
 
 def reminder_marker(now: datetime) -> str:
