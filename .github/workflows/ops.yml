@@ -26,10 +26,13 @@ on:
 
 permissions: {}
 
-# One run per op at a time, queued not cancelled: two concurrent writes of the same vault
-# entries (e.g. a resolver dispatch and a manual run of a key-creating op) never interleave.
+# One run per op AND fix target at a time, queued not cancelled: two concurrent writes of the
+# same target (e.g. a resolver dispatch and a manual run of a key-creating op) never interleave.
+# The params are part of the key because GitHub keeps only ONE pending run per group and
+# cancels the older pending one: keyed by op alone, a resolver's N per-target dispatches lost
+# all but the first and last (#90, seen on MB-011 runs 36-38).
 concurrency:
-  group: ops-broker-${{ inputs.op }}
+  group: ops-broker-${{ inputs.op }}-${{ inputs.params }}
   cancel-in-progress: false
 
 env:

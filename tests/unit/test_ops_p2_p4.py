@@ -220,6 +220,15 @@ def test_ops_workflow_gates_r2_on_the_owner_environment_and_refuses_r3() -> None
     assert "R3 ops are not wired yet" in plan
 
 
+def test_ops_concurrency_is_per_fix_target_so_resolver_dispatches_are_not_cancelled() -> None:
+    # GitHub keeps one pending run per concurrency group and cancels the older pending one.
+    # Keyed by op alone, a resolver's per-target dispatches cancelled each other (#90).
+    workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "ops.yml").read_text())
+    concurrency = workflow["concurrency"]
+    assert "inputs.op" in concurrency["group"] and "inputs.params" in concurrency["group"]
+    assert concurrency["cancel-in-progress"] is False
+
+
 def test_deleting_an_already_absent_secret_succeeds_idempotently() -> None:
     # Negative control first: a real 404 from `gh secret delete` (the secret is absent) must
     # not fail the run; any other failure must still fail it.
