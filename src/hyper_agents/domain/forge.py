@@ -39,6 +39,29 @@ class Item:
     open: bool
 
 
+@dataclass(frozen=True)
+class Access:
+    """What the forge credential can do in one repository, probed without changing anything."""
+
+    settings_readable: bool
+    items_writable: bool
+    credential_expires_at: datetime | None = None
+
+    @property
+    def ok(self) -> bool:
+        return self.settings_readable and self.items_writable
+
+    def missing(self) -> list[str]:
+        return [
+            name
+            for name, held in (
+                ("administration (read settings)", self.settings_readable),
+                ("issues (write)", self.items_writable),
+            )
+            if not held
+        ]
+
+
 def closing_items(body: str, repo: str) -> list[int]:
     """Items in ``repo`` that ``body`` closes with a ``Closes #N`` line, once each, in order.
 

@@ -14,7 +14,7 @@ from datetime import datetime
 from typing import Any, cast
 from urllib.parse import quote, urlsplit
 
-from hyper_agents.domain.forge import Change, Item
+from hyper_agents.domain.forge import Access, Change, Item
 
 _REPO = re.compile(r"^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$")
 SETTINGS_FIELDS = (
@@ -29,18 +29,25 @@ SETTINGS_FIELDS = (
     "has_issues",
 )
 
-Transport = Callable[[str, str, dict[str, str], bytes | None], tuple[int, bytes]]
+# A transport returns (status, body), or (status, body, headers) when it can see headers.
+Transport = Callable[
+    [str, str, dict[str, str], bytes | None],
+    tuple[int, bytes] | tuple[int, bytes, dict[str, str]],
+]
+EXPIRY_HEADER = "github-authentication-token-expiration"
+_MAX_PAGES = 50
 
 
 def _urllib_transport(
     method: str, url: str, headers: dict[str, str], body: bytes | None
-) -> tuple[int, bytes]:
+) -> tuple[int, bytes, dict[str, str]]:
     request = urllib.request.Request(url, data=body, method=method, headers=headers)  # noqa: S310
     try:
         with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310
-            return int(response.status), response.read()
+            seen = {k.lower(): v for k, v in response.headers.items()}
+            return int(response.status), response.read(), seen
     except urllib.error.HTTPError as error:
-        return int(error.code), error.read()
+        return int(error.code), error.read(), {k.lower(): v for k, v in error.headers.items()}
 
 
 def _when(value: object) -> datetime | None:
@@ -62,8 +69,24 @@ class GithubForge:
         self._api = api.rstrip("/")
         self._host = urlsplit(self._api).netloc
         self._transport = transport or _urllib_transport
+        self._last_headers: dict[str, str] = {}
+
+    def _send(
+        self, method: str, url: str, headers: dict[str, str], body: bytes | None
+    ) -> tuple[int, bytes]:
+        result = self._transport(method, url, headers, body)
+        self._last_headers = dict(result[2]) if len(result) > 2 else {}  # type: ignore[misc]
+        return result[0], result[1]
 
     def _call(self, method: str, path: str, payload: object | None = None) -> Any:
+        status, raw = self._status_call(method, path, payload)
+        if status >= 400:
+            raise RuntimeError(f"{method} {path} failed with HTTP {status}")
+        return json.loads(raw) if raw else None
+
+    def _status_call(
+        self, method: str, path: str, payload: object | None = None
+    ) -> tuple[int, bytes]:
         url = f"{self._api}{path}"
         if urlsplit(url).netloc != self._host:
             raise ValueError("refusing a request outside the configured API host")
@@ -76,16 +99,14 @@ class GithubForge:
         if payload is not None:
             body = json.dumps(payload).encode("utf-8")
             headers["Content-Type"] = "application/json"
-        status, raw = self._transport(method, url, headers, body)
+        status, raw = self._send(method, url, headers, body)
         # Rate limited: back off and retry, at most three times (5s, 20s, 60s).
         for delay in (5.0, 20.0, 60.0):
             if status != 429:
                 break
             self._sleep(delay)
-            status, raw = self._transport(method, url, headers, body)
-        if status >= 400:
-            raise RuntimeError(f"{method} {path} failed with HTTP {status}")
-        return json.loads(raw) if raw else None
+            status, raw = self._send(method, url, headers, body)
+        return status, raw
 
     @staticmethod
     def _repo(repo: str) -> str:
@@ -179,11 +200,8 @@ class GithubForge:
 
     def upsert_note(self, repo: str, number: int, marker: str, text: str) -> None:
         base = f"/repos/{self._repo(repo)}/issues"
-        comments = cast(
-            list[dict[str, Any]], self._call("GET", f"{base}/{number}/comments?per_page=100") or []
-        )
         body = f"{marker}\n{text}"
-        for comment in comments:
+        for comment in self._comments(repo, number):
             if str(comment.get("body") or "").startswith(marker):
                 if comment.get("body") != body:
                     self._call("PATCH", f"{base}/comments/{comment['id']}", {"body": body})
@@ -211,3 +229,88 @@ class GithubForge:
             self._call("GET", f"/repos/{self._repo(repo)}/contents/{quote(path)}?ref={quote(ref)}"),
         )
         return base64.b64decode(str(raw["content"])).decode("utf-8")
+
+    def access(self, repo: str) -> Access:
+        """Probe without changing anything: read settings, and add an empty label list to
+        the newest item (a no-op write that still needs item write permission)."""
+        settings_readable = any(value is not None for value in self.settings(repo).values())
+        expires = _expiry(self._last_headers.get(EXPIRY_HEADER))
+        newest = cast(
+            list[dict[str, Any]],
+            self._call("GET", f"/repos/{self._repo(repo)}/issues?state=all&per_page=1") or [],
+        )
+        items_writable = False
+        if newest:
+            status, _ = self._status_call(
+                "POST",
+                f"/repos/{self._repo(repo)}/issues/{newest[0]['number']}/labels",
+                {"labels": []},
+            )
+            items_writable = status < 400
+        return Access(settings_readable, items_writable, expires)
+
+    def ensure_item(self, repo: str, marker: str, title: str, body: str, open: bool) -> int:
+        """Find the item whose body starts with ``marker`` (any state) and make it match;
+        create it when missing. Returns its number."""
+        base = f"/repos/{self._repo(repo)}/issues"
+        state = "open" if open else "closed"
+        for page in range(1, 6):
+            found = cast(
+                list[dict[str, Any]],
+                self._call("GET", f"{base}?state=all&per_page=100&page={page}") or [],
+            )
+            for item in found:
+                if "pull_request" in item or not str(item.get("body") or "").startswith(marker):
+                    continue
+                changes: dict[str, object] = {}
+                if item.get("body") != body:
+                    changes["body"] = body
+                if item.get("title") != title:
+                    changes["title"] = title
+                if item.get("state") != state:
+                    changes["state"] = state
+                    if not open:
+                        changes["state_reason"] = "completed"
+                if changes:
+                    self._call("PATCH", f"{base}/{item['number']}", changes)
+                return int(item["number"])
+            if len(found) < 100:
+                break
+        created = cast(dict[str, Any], self._call("POST", base, {"title": title, "body": body}))
+        number = int(created["number"])
+        if not open:
+            self._call("PATCH", f"{base}/{number}", {"state": "closed"})
+        return number
+
+    def note_exists(self, repo: str, number: int, marker: str) -> bool:
+        return any(
+            str(c.get("body") or "").startswith(marker) for c in self._comments(repo, number)
+        )
+
+    def _comments(self, repo: str, number: int) -> list[dict[str, Any]]:
+        """Every comment on an item, across pages, so marker dedupe holds past 100 comments."""
+        base = f"/repos/{self._repo(repo)}/issues/{number}/comments?per_page=100"
+        comments: list[dict[str, Any]] = []
+        for page in range(1, _MAX_PAGES + 1):
+            found = cast(list[dict[str, Any]], self._call("GET", f"{base}&page={page}") or [])
+            comments.extend(found)
+            if len(found) < 100:
+                return comments
+        raise RuntimeError(f"more than {_MAX_PAGES * 100} comments on item {number}")
+
+    def dispatch(self, repo: str, workflow: str, ref: str, inputs: dict[str, str]) -> None:
+        self._call(
+            "POST",
+            f"/repos/{self._repo(repo)}/actions/workflows/{quote(workflow)}/dispatches",
+            {"ref": ref, "inputs": inputs},
+        )
+
+
+def _expiry(value: str | None) -> datetime | None:
+    """Parse the credential expiry header ("2027-11-13 09:00:00 UTC"), if present."""
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value.replace(" UTC", " +0000"), "%Y-%m-%d %H:%M:%S %z")
+    except ValueError:
+        return None

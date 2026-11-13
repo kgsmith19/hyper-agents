@@ -2,7 +2,8 @@ name: Repository maintenance
 
 # Thin trigger for `python -m hyper_agents.ops maintain` (any scheduler can run the same
 # command). For every repository in ops/fleet.yaml it closes Items named by merged changes,
-# flags conflicted changes (no CI can run on them) and reports settings drift. R0/R1 ops only;
+# flags conflicted changes (no CI can run on them) and reports settings drift, then refreshes
+# the owner-actions checklist (ops/owner_actions.yaml) once. R0/R1 ops only;
 # settings apply stays an owner-approved R2 op through the Ops broker. Runs from main only.
 on:
   schedule:

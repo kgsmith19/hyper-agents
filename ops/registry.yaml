@@ -161,3 +161,11 @@ ops:
     params:
       - name: repo
         enum: [kgsmith19/agent-engineering-standard, kgsmith19/agent-extensions, kgsmith19/hyper-agents, kgsmith19/hyperbolic-core]
+
+  # Owner actions (ops/owner_actions.yaml): live-checked checklist of the few owner-only steps.
+  # R1: rewrites one tracker item, posts at most one reminder a week, and starts gated
+  # settings-apply runs that still wait for the owner's ops-r2 approval.
+  - id: owner.actions_status
+    adapter: owner
+    action: status
+    tier: R1
