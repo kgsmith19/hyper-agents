@@ -18,7 +18,7 @@ import hashlib
 import json
 from collections.abc import Callable, Mapping
 from dataclasses import replace
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from hyper_agents.application.ports import ForgePort
 from hyper_agents.domain.manual_blocker import dedupe
@@ -70,13 +70,13 @@ def actions_status(
         "pending": [a.id for a in open_actions],
         "done": [a.id for a in actions if a not in open_actions],
     }
-    number: int | None = None
     if apply and workflow and any(a.resolver for a in open_actions):
-        number = forge.ensure_item(
+        # The attempt notes live on the tracker Item, so it must exist first.
+        item = forge.ensure_item(
             repo, MARKER, TITLE, render(actions, statuses, now), open=bool(open_actions)
         )
         statuses, started = request_resolutions(
-            forge, repo, number, actions, statuses, workflow=workflow, ref=ref, apply=True
+            forge, repo, item, actions, statuses, workflow=workflow, ref=ref, now=now, apply=True
         )
         report["resolutions_started"] = started
     report["details"] = {key: status.detail for key, status in statuses.items()}
@@ -96,10 +96,12 @@ def actions_status(
         repo, MARKER, TITLE, render(actions, statuses, now), open=bool(open_actions)
     )
     report["item"] = number
-    if open_actions:
+    # Remind only about steps that need the owner now, not ones being fixed automatically.
+    needs_owner = [a for a in open_actions if not statuses[a.id].resolving]
+    if needs_owner:
         marker = reminder_marker(now)
         if not forge.note_exists(repo, number, marker):
-            forge.upsert_note(repo, number, marker, reminder_text(open_actions))
+            forge.upsert_note(repo, number, marker, reminder_text(needs_owner))
             report["reminded"] = True
     return report
 
@@ -146,12 +148,28 @@ def request_settings_apply(
     return requested
 
 
-def resolution_marker(action_id: str, params: Mapping[str, str], evidence: str, n: int) -> str:
-    """One marker per attempt at one fix for one piece of evidence. New evidence (the
-    problem changed) gets a fresh attempt budget; the same evidence never loops."""
-    key = json.dumps({"action": action_id, "params": dict(params), "evidence": evidence})
+# An attempt counts as failed only once it has had this long to work; until then it is
+# "running", so the 30-minute maintenance cadence never spends the budget by itself.
+SETTLE = timedelta(minutes=90)
+_STARTED = "started_at="
+
+
+def resolution_marker(action_id: str, params: Mapping[str, str], week: str, n: int) -> str:
+    """One marker per attempt at one fix, keyed by the fix's params (sorted) and the ISO
+    week. Free-text evidence is not part of the key, so changing counts never reset the
+    budget; the weekly key bounds attempts to ``max_attempts`` a week per fix."""
+    key = json.dumps({"action": action_id, "params": dict(params)}, sort_keys=True)
     digest = hashlib.sha256(key.encode()).hexdigest()[:12]
-    return f"<!-- hyper-agents:owner-actions:resolve:{action_id}:{digest}:{n} -->"
+    return f"<!-- hyper-agents:owner-actions:resolve:{action_id}:{digest}:{week}:{n} -->"
+
+
+def _started_at(body: str | None) -> datetime | None:
+    if not body or _STARTED not in body:
+        return None
+    try:
+        return datetime.fromisoformat(body.split(_STARTED, 1)[1].split()[0].rstrip(".)"))
+    except ValueError:
+        return None
 
 
 def request_resolutions(
@@ -163,12 +181,16 @@ def request_resolutions(
     *,
     workflow: str,
     ref: str,
+    now: datetime,
     apply: bool,
+    settle: timedelta = SETTLE,
 ) -> tuple[dict[str, Status], list[str]]:
     """Dispatch each pending action's resolver op; return the statuses annotated with what
-    happened, and the dispatches started as ``action:params``."""
+    happened, and the dispatches started as ``action:params``. Never raises for one fix."""
     updated = dict(statuses)
     started: list[str] = []
+    year, week_no, _ = now.isocalendar()
+    week = f"{year}-W{week_no:02d}"
     for action in actions:
         status = statuses.get(action.id)
         resolver = action.resolver
@@ -176,46 +198,66 @@ def request_resolutions(
             continue
         if status.detail.startswith(CHECK_FAILED):
             continue  # a broken check proves nothing; never act on it
-        attempts: list[int] = []
-        exhausted = False
+        running: list[int] = []
+        exhausted = 0
+        errors: list[str] = []
         for fix in status.fixes or ((),):
-            params = dict(fix)
+            params = dict(sorted(fix))
             used = 0
             while used < resolver.max_attempts and forge.note_exists(
-                repo, item, resolution_marker(action.id, params, status.detail, used + 1)
+                repo, item, resolution_marker(action.id, params, week, used + 1)
             ):
                 used += 1
+            if used:
+                last = _started_at(
+                    forge.note_body(repo, item, resolution_marker(action.id, params, week, used))
+                )
+                if last is not None and now - last < settle:
+                    running.append(used)
+                    continue
             if used >= resolver.max_attempts:
-                exhausted = True
+                exhausted += 1
                 continue
             attempt = used + 1
-            attempts.append(attempt)
-            started.append(f"{action.id}:{json.dumps(params, sort_keys=True)}")
-            if apply:
-                forge.dispatch(
-                    repo,
-                    workflow,
-                    ref,
-                    {"op": resolver.op, "params": json.dumps(params), "mode": "apply"},
+            try:
+                if apply:
+                    # Marker first: a failed dispatch still spends the attempt, so a broken
+                    # dispatch path can never loop.
+                    forge.upsert_note(
+                        repo,
+                        item,
+                        resolution_marker(action.id, params, week, attempt),
+                        f"Automated fix for **{action.title}**: started `{resolver.op}` "
+                        f"(attempt {attempt} of {resolver.max_attempts}, "
+                        f"{_STARTED}{now.isoformat()}).",
+                    )
+                    forge.dispatch(
+                        repo,
+                        workflow,
+                        ref,
+                        {"op": resolver.op, "params": json.dumps(params), "mode": "apply"},
+                    )
+                running.append(attempt)
+                started.append(f"{action.id}:{json.dumps(params, sort_keys=True)}")
+            except Exception as error:  # one fix's failure never stops the checklist
+                errors.append(type(error).__name__)
+        if exhausted or errors:
+            reasons: list[str] = []
+            if exhausted:
+                reasons.append(
+                    f"the automated fix failed {resolver.max_attempts} times for "
+                    f"{exhausted} of {len(status.fixes or ((),))} target(s)"
                 )
-                forge.upsert_note(
-                    repo,
-                    item,
-                    resolution_marker(action.id, params, status.detail, attempt),
-                    f"Automated fix for **{action.title}**: started `{resolver.op}` "
-                    f"(attempt {attempt} of {resolver.max_attempts}).",
-                )
-        if attempts:
+            if errors:
+                reasons.append(f"an automated fix could not start ({', '.join(errors)})")
+            updated[action.id] = replace(
+                status, detail=f"{status.detail}. {'; '.join(reasons)}, so the steps below need you"
+            )
+        elif running:
             updated[action.id] = replace(
                 status,
                 detail=f"{status.detail}. Automated fix running "
-                f"(attempt {max(attempts)} of {resolver.max_attempts})",
+                f"(attempt {max(running)} of {resolver.max_attempts})",
                 resolving=True,
-            )
-        elif exhausted:
-            updated[action.id] = replace(
-                status,
-                detail=f"{status.detail}. The automated fix failed "
-                f"{resolver.max_attempts} times, so the steps below need you",
             )
     return updated, started

@@ -4,7 +4,7 @@ Loads ``ops/owner_actions.yaml`` and supplies the live checks it names. The chec
 forge and the secrets store only through the fleet's ports, so no provider is named here.
 """
 
-from collections.abc import Callable, Collection, Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -64,7 +64,7 @@ def _blocker_spec(raw: object) -> BlockerSpec | None:
     )
 
 
-def _resolver(raw: object, known_ops: Collection[str] | None) -> Resolver | None:
+def _resolver(raw: object, known_ops: Mapping[str, Any] | None) -> Resolver | None:
     if raw is None:
         return None
     if not isinstance(raw, dict):
@@ -76,17 +76,24 @@ def _resolver(raw: object, known_ops: Collection[str] | None) -> Resolver | None
     op = spec.get("op")
     if not isinstance(op, str) or not op:
         raise ValueError("resolver.op must be a registered op id")
-    if known_ops is not None and op not in known_ops:
-        raise ValueError(f"resolver.op {op!r} is not in the op registry")
+    if known_ops is not None:
+        registered = known_ops.get(op)
+        if registered is None:
+            raise ValueError(f"resolver.op {op!r} is not in the op registry")
+        # maintain dispatches resolvers unattended: R0/R1, or R2 in the reviewer-free ops-r2
+        # environment. R3, or an R2 behind any other gate, would hang waiting for a person.
+        tier, gate = getattr(registered, "tier", ""), getattr(registered, "gate", None)
+        if tier == "R3" or (tier == "R2" and gate != "ops-r2"):
+            raise ValueError(f"resolver.op {op!r} is {tier}; resolvers must run unattended")
     attempts = spec.get("max_attempts", 2)
     if not isinstance(attempts, int) or isinstance(attempts, bool) or not 1 <= attempts <= 5:
         raise ValueError("resolver.max_attempts must be an integer from 1 to 5")
     return Resolver(op=op, max_attempts=attempts)
 
 
-def load_owner_actions(path: Path, known_ops: Collection[str] | None = None) -> TrackerConfig:
-    """Load the checklist. With ``known_ops`` (the op registry's ids), a resolver naming an
-    unregistered op fails the load."""
+def load_owner_actions(path: Path, known_ops: Mapping[str, Any] | None = None) -> TrackerConfig:
+    """Load the checklist. With ``known_ops`` (the op registry), a resolver naming an
+    unregistered op, or one that cannot run unattended, fails the load."""
     raw = cast(dict[str, Any], yaml.safe_load(path.read_text(encoding="utf-8")))
     head = cast(dict[str, Any], raw["tracker"])
     actions: list[OwnerAction] = []

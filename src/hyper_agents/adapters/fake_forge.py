@@ -18,6 +18,7 @@ class FakeForge:
     access_by_repo: dict[str, Access] = field(default_factory=lambda: {})
     tracked: dict[str, tuple[int, str, str, bool]] = field(default_factory=lambda: {})
     notes: dict[int, list[str]] = field(default_factory=lambda: {})
+    note_texts: dict[tuple[int, str], str] = field(default_factory=lambda: {})
     branches: dict[str, str] = field(default_factory=lambda: {})
     tags: dict[str, str] = field(default_factory=lambda: {})
     refs_writable: bool = True
@@ -56,6 +57,7 @@ class FakeForge:
         held = self.notes.setdefault(number, [])
         if marker not in held:
             held.append(marker)
+        self.note_texts[(number, marker)] = text
         self.writes.append(("note", number))
 
     def update_change_branch(self, repo: str, number: int) -> None:
@@ -82,6 +84,9 @@ class FakeForge:
 
     def note_exists(self, repo: str, number: int, marker: str) -> bool:
         return marker in self.notes.get(number, [])
+
+    def note_body(self, repo: str, number: int, marker: str) -> str | None:
+        return self.note_texts.get((number, marker))
 
     def dispatch(self, repo: str, workflow: str, ref: str, inputs: dict[str, str]) -> None:
         self.writes.append(("dispatch", dict(inputs)))
