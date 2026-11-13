@@ -7,7 +7,7 @@
 
 import json
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -17,6 +17,7 @@ import yaml
 from hyper_agents.adapters.forge_github import GithubForge
 from hyper_agents.application import repo_maintenance as maintenance
 from hyper_agents.application.ports import ForgePort
+from hyper_agents.domain.forge import LedgerBranch
 
 FORGES: dict[str, Callable[[Callable[[], str], str], ForgePort]] = {
     "github": lambda token, api: GithubForge(token=token, api=api),
@@ -34,6 +35,29 @@ class Fleet:
     profile_path: str
     close_window_days: int
     repos: tuple[str, ...]
+    branch_ledger: dict[str, tuple[LedgerBranch, ...]] = field(
+        default_factory=lambda: dict[str, tuple[LedgerBranch, ...]]()
+    )
+
+
+def load_branch_ledger(path: Path, repos: tuple[str, ...]) -> dict[str, tuple[LedgerBranch, ...]]:
+    """Read the reconciled-branch ledger. Refuses repositories outside the fleet and repeats."""
+    raw = cast(dict[str, Any], yaml.safe_load(path.read_text(encoding="utf-8")) or {})
+    ledger: dict[str, tuple[LedgerBranch, ...]] = {}
+    for repo, entries in cast(dict[str, Any], raw.get("repos") or {}).items():
+        if repo not in repos:
+            raise ValueError(f"branch ledger names {repo}, which is not in the fleet")
+        branches = tuple(
+            LedgerBranch(
+                branch=str(e["branch"]), sha=str(e["sha"]), archive=bool(e.get("archive", False))
+            )
+            for e in cast(list[dict[str, Any]], entries or [])
+        )
+        names = [b.branch for b in branches]
+        if len(set(names)) != len(names):
+            raise ValueError(f"branch ledger lists a branch twice in {repo}")
+        ledger[str(repo)] = branches
+    return ledger
 
 
 def load_fleet(path: Path) -> Fleet:
@@ -41,6 +65,7 @@ def load_fleet(path: Path) -> Fleet:
     forge = cast(dict[str, Any], raw["forge"])
     token = cast(dict[str, Any], forge["token"])
     profile = cast(dict[str, Any], raw["settings_profile"])
+    repos = tuple(str(repo) for repo in raw["repos"])
     if str(forge["adapter"]) not in FORGES:
         raise ValueError(f"unknown forge adapter {forge['adapter']!r}; known: {sorted(FORGES)}")
     return Fleet(
@@ -52,7 +77,12 @@ def load_fleet(path: Path) -> Fleet:
         profile_ref=str(profile["ref"]),
         profile_path=str(profile["path"]),
         close_window_days=int(raw.get("close_window_days", 14)),
-        repos=tuple(str(repo) for repo in raw["repos"]),
+        repos=repos,
+        branch_ledger=(
+            load_branch_ledger(path.parent / str(raw["branch_ledger"]), repos)
+            if raw.get("branch_ledger")
+            else {}
+        ),
     )
 
 
@@ -69,6 +99,7 @@ class RepoAdapter:
             lambda: str(secrets.get(fleet.token_path, fleet.token_name)), fleet.api
         )
         self._now = clock or (lambda: datetime.now(UTC))
+        self._pruned: dict[str, dict[str, Any]] = {}
 
     @property
     def forge(self) -> ForgePort:
@@ -80,6 +111,26 @@ class RepoAdapter:
             self._fleet.profile_repo, self._fleet.profile_ref, self._fleet.profile_path
         )
         return cast(dict[str, object], json.loads(text))
+
+    def branch_prune(self, repo: str, *, apply: bool) -> dict[str, Any]:
+        """Run the prune; remember the latest report per repository, failed runs included."""
+        ledger = self._fleet.branch_ledger.get(repo, ())
+        try:
+            report = maintenance.branch_prune(self._forge, repo, ledger, apply=apply)
+        except maintenance.PruneFailed as error:
+            self._pruned[repo] = cast(dict[str, Any], json.loads(str(error)))
+            raise
+        self._pruned[repo] = report
+        return report
+
+    def prune_state(self, repo: str) -> dict[str, Any]:
+        """The latest prune report for ``repo`` (this process), else a fresh dry run."""
+        if repo not in self._pruned:
+            try:
+                self.branch_prune(repo, apply=False)
+            except maintenance.PruneFailed:
+                pass
+        return self._pruned[repo]
 
     def execute(self, action: str, params: Mapping[str, str]) -> dict[str, Any]:
         repo = params["repo"]
@@ -93,6 +144,7 @@ class RepoAdapter:
                 ),
                 "change_health": maintenance.change_health(self._forge, repo, apply=False),
                 "settings": maintenance.drift(self._forge, repo, self.desired()),
+                "branch_prune": self.branch_prune(repo, apply=False),
             }
         if action == "settings_drift":
             return maintenance.drift(self._forge, repo, self.desired())
@@ -102,6 +154,8 @@ class RepoAdapter:
             )
         if action == "change_health":
             return maintenance.change_health(self._forge, repo, apply=True)
+        if action == "branch_prune":
+            return self.branch_prune(repo, apply=True)
         if action == "settings_apply":
             return maintenance.apply_settings(self._forge, repo, self.desired(), apply=True)
         raise ValueError(f"unknown repo action: {action}")

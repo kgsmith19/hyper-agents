@@ -223,7 +223,27 @@ def test_github_access_probe_changes_nothing_and_reads_the_expiry() -> None:
     access = adapter.access(repo)
     assert access.settings_readable is True and access.items_writable is False
     assert access.credential_expires_at == datetime(2027, 11, 13, 9, 0, tzinfo=UTC)
-    assert calls[-1] == ("POST", f"/repos/{repo}/issues/41/labels", {"labels": []})
+    assert ("POST", f"/repos/{repo}/issues/41/labels", {"labels": []}) in calls
+    # The ref probe points at the all-zero SHA, so it can never create a branch.
+    assert calls[-1] == (
+        "POST",
+        f"/repos/{repo}/git/refs",
+        {"ref": "refs/heads/hyper-agents-ref-write-probe", "sha": "0" * 40},
+    )
+    assert access.refs_writable is False  # 200 from the fake is not the 422 that proves it
+
+
+def test_github_ref_probe_reads_422_as_writable_and_403_as_not() -> None:
+    repo = "kgsmith19/hyperbolic-core"
+    for status, writable in ((422, True), (403, False), (404, False)):
+        adapter, _ = _github(
+            {
+                ("GET", f"/repos/{repo}"): (200, {"delete_branch_on_merge": True}),
+                ("GET", f"/repos/{repo}/issues"): (200, []),
+                ("POST", f"/repos/{repo}/git/refs"): (status, {"message": "x"}),
+            }
+        )
+        assert adapter.access(repo).refs_writable is writable
 
 
 def test_github_ensure_item_rewrites_the_marked_item_in_place() -> None:

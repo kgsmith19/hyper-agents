@@ -1,0 +1,80 @@
+# Reconciled branches for `repo.branch_prune` (generated from
+# docs/ops/branch-reconciliation-2026-11-13.md). A branch is deleted only while its live head
+# still equals `sha`; `archive: true` tags archive/<branch> at that SHA first. Changing this
+# file is a reviewed PR. Never list an active session branch or the default branch.
+
+repos:
+  kgsmith19/agent-engineering-standard:
+    - {branch: ccr-1b50d880-9z1eh8, sha: 4a72f88d3db92451357e513ce3bbbbad950c5511}
+    - {branch: issue/324-review-contract, sha: 4a72f88d3db92451357e513ce3bbbbad950c5511}
+    - {branch: ccr-a3588a7e-gkdp4s, sha: 1d97dc2816245271adf17c49cfd157586abd3aba}
+    - {branch: ccr-d113909a-3mabiw, sha: e58c9b5865bf7145e28045e5e6acba109bde0941}
+    - {branch: claude/sleepy-lamport-rk45pp, sha: 3c0e4ce026e70dbe053e7d3f83861d4f86c94111}
+    - {branch: issue/279-session-start-adapter, sha: a4579cd86d1eed3e08a223f59915a0024a6f7f54}
+    - {branch: issue/287-queue-guard, sha: e0eedd761c079b215fc7ec809c08f3bcd1fe18c5}
+    - {branch: issue/321-aes-vnext-conformance, sha: 0761a02c215e437d812ee5b851eea10799e6def3}
+    - {branch: issue/327-conformance-job-check, sha: 7a8bc3cea0c971ca1968220e63ca09e36ee29088}
+    - {branch: issue/329-remove-ai-review, sha: 542234328192c5ef8228de516905c077a6bcfb2d}
+    - {branch: issue/281-queue-guard-proof, sha: 482db9c7228f7336a08abfac23dc735052a0f346, archive: true}
+    - {branch: ccr-75b2b0cd-yfz3b3, sha: 025ac96534255815c4307d8b9325ef257706cd8f}
+  kgsmith19/agent-extensions:
+    - {branch: claude/sleepy-lamport-rk45pp, sha: 8e1acaf1c50c7aa68901a81762c9d5d1906bd5c0}
+    - {branch: issue/36-queue-guard-proof, sha: 10b0bcdabe3d67e5a425e959578a9fdc33ba4a99, archive: true}
+  kgsmith19/hyper-agents:
+    - {branch: ccr-1b50d880-9z1eh8, sha: 9a83d98edb2f75583800f1b93ad8ec51dcacfee3}
+    - {branch: ccr-70fd9e88-v8oqpz, sha: fd718bacfa2d4ef64176657bee95297a1c17b5e2}
+    - {branch: ccr-81dd9f1d-7hlvo3, sha: 0905c2563c90969e6c83cd20c23b226cae422fe6}
+    - {branch: ccr-b18954ce-o770ss, sha: 35e62b2294aedb79554eae67a335cbbb62d26ba0}
+    - {branch: fix/idempotent-secret-delete, sha: a838fabdacf646fa1d0fd1c6b276e037921fc2c4}
+    - {branch: issue/100-ops-broker-p2-p4, sha: faf0e5a75d0db0aa6a5f9ebaf3b2c198b8e15ec6}
+    - {branch: issue/21-aes-conformance, sha: bcfe8d7494c666a54713f8985af0aeb0cc23eae6}
+    - {branch: issue/25-team-roles, sha: f124bc815c27137aadc10f5a3d6a6c69ebab1b27}
+    - {branch: issue/27-workflow-team, sha: 0f2ec05f530f014e37dd78e222ab1cf0a6d1ec13}
+    - {branch: issue/29-sqlite-run-store, sha: c8832f5804a606583f2bf88cafa39cc3101bed5a}
+    - {branch: issue/31-controller-tracker, sha: 144a4d25751bbef2dab3ff9b96968d000c33252b}
+    - {branch: issue/33-p05-review-verify, sha: 01b7fe61e42da669635fec481fb5b58d39a560ce}
+    - {branch: issue/35-api-contracts, sha: d228d2c3eed9b8af070a60a79ac0c9ed21be8dbb}
+    - {branch: issue/37-headless-json-cli, sha: c090e46f3ec6ff5640c5c339b5b12e0688a01225}
+    - {branch: issue/39-signed-webhook, sha: 0c1078af36491ebf7c99581acb6dc7efa3e49aca}
+    - {branch: issue/41-local-sqlite-daemon, sha: 2b8967ffda26f01baebb81da1dcf5357c9dc6321}
+    - {branch: issue/43-agent-server-adapter, sha: 7228a5af3ea0c0cec6853a392cb78828c698c4a1}
+    - {branch: issue/45-compose-hook-installer, sha: 6e0476c330704abbe94cb510f0ab8991b66a0b6a}
+    - {branch: issue/47-frozen-eval-fixtures, sha: 3eea7afc80769d947088a830fa59468ac5318a2f}
+    - {branch: issue/49-adversarial-probes, sha: 1d5cdfec1cc3c953e0bb0b35817f2b84a6c81635}
+    - {branch: ops/broker-p1, sha: bd6c26f4968283fb59a415a6132d0a09ebe49590}
+    - {branch: ccr-9b07541b-53w1e0, sha: a317fb5bbeff3fd15baa6e3fd465f73d69b0c064, archive: true}
+    - {branch: ccr-d9c33ca1-119wwp, sha: 4f0726ec9447246dbc7a3ce3342c2c0a4750edb1, archive: true}
+    - {branch: issue/19-docker-policy, sha: 02c903f07c4ef658f0ea854bce2bbb3385afd9e8, archive: true}
+    - {branch: ccr-a3588a7e-gkdp4s, sha: 9e7fd0f9ad5248bed7eea731e095e1e756699eb4}
+    - {branch: ccr-75b2b0cd-yfz3b3, sha: 185df3f33ef93bc2dfba1ec13ed3392d3a6e847e}
+  kgsmith19/hyperbolic-core:
+    - {branch: ccr-3fd10670-dj781f, sha: d38da4609488b524c3702ac0d22d37de7c19024c}
+    - {branch: ccr-70fd9e88-v8oqpz, sha: 24639a8db7efb2a25804f02f8cfe546162891b1e}
+    - {branch: ccr-a3588a7e-gkdp4s, sha: 894862d4cf6396066fe2251940f221e0481a44c5}
+    - {branch: ccr-b18954ce-o770ss, sha: 3c780aa8346550ccdc08e5150a9d4e7259b43f9f}
+    - {branch: claude/sleepy-lamport-rk45pp, sha: b83370dc73252317ce996b3718d4193ae1684618}
+    - {branch: feat/lifeos-535-identity-crosswalk, sha: 6a8a6ef89c8d6e1513cfcdc7350d95a4d5df8bf2}
+    - {branch: feat/lifeos-576-today-calm-ui, sha: 5670ea123572a0347c90b018c1450ebb4101c864}
+    - {branch: issue/391-stage63-adopt-v5, sha: 23b9017056be25e67876a18df6b255cc47dc89b6}
+    - {branch: issue/421-s3-verification-molds, sha: abc805ac3cb55218242b3c78f8c8f2814497855f}
+    - {branch: issue/422-implementation-quality-semantics, sha: 9868a433052101c418dd15639801b6853d31251b}
+    - {branch: issue/433-lifeos-writer-preflight, sha: 199de7b11bcd9a69dab80b1020ae6cd8c48b70ee}
+    - {branch: issue/436-agent-app-identities-and-prompt-close, sha: d6031671565dd0734e7e479d15a623d4b1a9f484}
+    - {branch: issue/440-reviewer-mint-contents-read, sha: 9d37453d623c4d81544edde1b0d5bf015046035a}
+    - {branch: issue/445-queue-guard, sha: 165f3a16746213010146877fd26d95cc92ae93bc}
+    - {branch: issue/450-monorepo-closeout, sha: aeb69cfbbf19ae4abd0e77c4b5e70f533c248b6d}
+    - {branch: issue/506-sqlite-kit, sha: f2402ff935bdec277ac8ebd90ebfd5a15598d9e7}
+    - {branch: issue/510-repoint-platform, sha: 56e8e29d342770b213ab88ad8ef60c3a8b449398}
+    - {branch: issue/531-today-command-center, sha: 5b025ed02fc152ca30b6dd5d56872416c6c764f2}
+    - {branch: issue/531-today-day-context, sha: a764cbcf8cf9893d6d07fc33850c02523bda9e48}
+    - {branch: issue/547-remove-ai-review, sha: 0780037cfc2d9c258ffd141922f5be81c9edc26d}
+    - {branch: issue/551-consolidate-apps, sha: 842220ce1cd9bf5bbc406b9c1592a6d5bad2ad40}
+    - {branch: issue/559-local-first-activation, sha: 383f5b4bb80b8762fa9e662fb00debbace7add48}
+    - {branch: issue/560-local-readiness, sha: 383f5b4bb80b8762fa9e662fb00debbace7add48}
+    - {branch: issue/588-sync-receipts, sha: 1360da556126776344c914719d07de0e0e1456bc}
+    - {branch: issue/589-sync-rollback, sha: 9933763dc787f1e19d817a6cd8c30958bdacdf17}
+    - {branch: audit/lifeos-consolidation-20261022, sha: 002dcb8a4d66a8beb362371ef85c5b112565574a, archive: true}
+    - {branch: fix/lifeos-569-design-tokens, sha: 2b4278e87f6efd366e05aa3ac4d95635f21ab622, archive: true}
+    - {branch: issue/443-queue-guard-proof, sha: 001c7953c9f610345fd926f2bc379e9a41f5e6fd, archive: true}
+    - {branch: issue/499-freeze-cloud-ops, sha: 407f65b328834547a6da0566de45e64104ddfb71, archive: true}
+    - {branch: ccr-75b2b0cd-yfz3b3, sha: 86573b673680e8c06f87eb3c8e8f8c66351bbb4b}

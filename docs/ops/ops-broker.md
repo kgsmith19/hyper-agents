@@ -42,7 +42,11 @@ them. Secret values are never parameters. Secrets are referenced by Infisical pa
 | `vendor.key.validate` | R0 | One `GET /v1/models` to a fixed OpenAI or Anthropic host; status, validity and fingerprint only |
 | `cli.run` | R0 | One argv from `CLI_ALLOWLIST` in `adapters.py`; params name a key, never argv |
 | `github.variable.set`, `github.variable.delete` | R1 | Non-secret configuration |
-| `github.secret.set`, `github.secret.delete` | R2 | Waits for the `ops-r2` environment |
+| `repo.report`, `repo.settings_drift` | R0 | Fleet maintenance reads (`ops/fleet.yaml`) |
+| `repo.close_sweep`, `repo.change_health` | R1 | Close Items named by merged changes; flag conflicted changes |
+| `repo.branch_prune` | R1 | Delete `ops/branch_ledger.yaml` branches, each only while its head equals the recorded SHA (tag `archive/<branch>` first where listed); never the default branch or one an open change uses; `blocked` without Contents write |
+| `github.secret.set`, `github.secret.delete` | R2 | Runs in the `ops-r2` environment (no reviewer) |
+| `repo.settings_apply` | R2 | Runs in the `ops-r2` environment (no reviewer) |
 
 ## Identities and bootstrap
 

@@ -69,11 +69,13 @@ class OwnerAdapter:
         secrets: Any,
         forge: ForgePort | None = None,
         clock: Callable[[], datetime] | None = None,
+        repos: RepoAdapter | None = None,
     ) -> None:
         self._fleet = fleet
         self._config = config
         self._secrets = secrets
-        self._repos = RepoAdapter(fleet, secrets, forge=forge, clock=clock)
+        # Sharing maintain's RepoAdapter lets checks reuse reports it already produced.
+        self._repos = repos or RepoAdapter(fleet, secrets, forge=forge, clock=clock)
         self._forge = self._repos.forge
         self._now = clock or (lambda: datetime.now(UTC))
         self._access: dict[str, Access] | None = None
@@ -129,6 +131,23 @@ class OwnerAdapter:
             return Status(False, f"not stored yet at {path}: {', '.join(missing)}")
         return Status(True, f"stored at {path}")
 
+    def _branches_pruned(self, action: OwnerAction) -> Status:
+        remaining: list[str] = []
+        for repo in self._fleet.repos:
+            rows = cast(list[dict[str, str]], self._repos.prune_state(repo)["branches"])
+            left = sum(1 for row in rows if row["result"] in maintenance.PRUNE_PENDING)
+            if left:
+                remaining.append(f"{repo.split('/')[-1]}: {left}")
+        if not remaining:
+            return Status(True, "every reconciled branch is pruned")
+        writable = all(a.refs_writable for a in self._fleet_access().values())
+        why = (
+            "pruning on the next run"
+            if writable
+            else "the ops token needs Contents: Read and write"
+        )
+        return Status(False, f"{why}; left: {', '.join(remaining)}")
+
     def execute(self, action: str, params: Mapping[str, str]) -> dict[str, Any]:
         if action != "status":
             raise ValueError(f"unknown owner action: {action}")
@@ -136,6 +155,7 @@ class OwnerAdapter:
             "forge_access": self._forge_access,
             "settings_clean": self._settings_clean,
             "secrets_present": self._secrets_present,
+            "branches_pruned": self._branches_pruned,
         }
         report = tracker.actions_status(
             self._forge,
