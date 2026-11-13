@@ -31,6 +31,10 @@ checks. `dev` and `staging` are empty.
 
 ## Known problems (owner)
 
+- **2026-11-13 audit:** see [`infisical-audit-2026-11-13.md`](infisical-audit-2026-11-13.md). The per-secret catalog is in the Operations Registry. Most urgent:
+  - `/ops/GITHUB_OPS_PAT` expires 2026-11-13 06:29 UTC and can't read admin settings. Regenerate it via #58 step 1.
+  - The `ai-coding-harness` identity holds the project **admin** role. Split it per workload.
+
 - Dead: `/platform/llm-handler/LLM_KEYS_GOOGLE` (401, intentionally unread by code), `/SUPABASE_ACCESS_TOKEN` (401). Pending deletion.
 - Restricted (403): `/review/REVIEW_GOOGLE_API_KEY`, `/OPENAI_USAGE_API_KEY`.
 - `/platform/llm-handler/TOOLBELT_GITHUB_INTAKE_PAT` has admin on six repos. Rotate to a narrow token.
