@@ -121,40 +121,64 @@ def test_tokens_match_the_hyperbolic_core_contract_exactly() -> None:
         "roles": ["financial_operations", "reliability_engineer"],
     }
     assert claims["exp"] - claims["iat"] == 30 * 24 * 3600
-    assert token_state(token, public, agent, roles, NOW) == "fresh"
+    assert token_state(token, public, agent, roles, NOW) == ("fresh", NOW + timedelta(days=30))
     assert unverified_expiry(token) == NOW + timedelta(days=30)
     assert unverified_expiry("not-a-jwt") is None
+    huge = jwt.encode({"exp": 10**20}, "k" * 32, algorithm="HS256")
+    assert unverified_expiry(huge) is None  # overflow is unreadable, never a crash
+    assert token_state(token, public, "chatgpt", roles, NOW)[0] == "invalid"
 
 
 class Server:
-    def __init__(self, patch_status: int | None = None) -> None:
+    def __init__(self, patch_status: int | None = None, folder_status: int = 400) -> None:
         self.patch_status = patch_status
+        self.folder_status = folder_status
         self.calls: list[tuple[str, str, Any]] = []
 
     def __call__(
         self, method: str, url: str, token: str, body: Mapping[str, Any] | None
     ) -> dict[str, Any]:
         self.calls.append((method, url, body))
-        if method == "POST" and url.endswith("/v1/folders") and body and body["name"] == "lifeos":
-            raise urllib.error.HTTPError(url, 400, "exists", Message(), None)
+        if method == "POST" and url.endswith("/v1/folders") and body and body["name"] == "platform":
+            raise urllib.error.HTTPError(url, self.folder_status, "x", Message(), None)
         if method == "PATCH" and self.patch_status:
             raise urllib.error.HTTPError(url, self.patch_status, "x", Message(), None)
         return {}
 
 
-def test_upsert_creates_folders_patches_then_falls_back_to_create() -> None:
-    server = Server(patch_status=404)
+def infisical_with(server: Server) -> InfisicalAdapter:
     infisical = InfisicalAdapter(project_id="proj", send=server)
     infisical._token = "tok"  # pyright: ignore[reportPrivateUsage]  # noqa: S105
-    infisical._cache["/lifeos/agents"] = (0.0, [])  # pyright: ignore[reportPrivateUsage]
-    infisical.upsert_secret("/lifeos/agents", "CHATGPT_TOKEN", "value")
+    return infisical
+
+
+def test_upsert_patches_first_and_creates_folders_only_when_absent() -> None:
+    server = Server()
+    infisical_with(server).upsert_secret("/lifeos/agents", "CHATGPT_TOKEN", "value")
+    assert [c[0] for c in server.calls] == ["PATCH"]  # the common case: one call
+    server = Server(patch_status=404)
+    infisical = infisical_with(server)
+    infisical._cache["/platform/lifeos-signing"] = (0.0, [])  # pyright: ignore[reportPrivateUsage]
+    infisical.upsert_secret("/platform/lifeos-signing", "LIFEOS_AGENT_JWT_PRIVATE_KEY", "v")
     folders = [c[2]["name"] for c in server.calls if c[1].endswith("/v1/folders")]
-    assert folders == ["lifeos", "agents"]  # an existing folder is fine
-    writes = [(c[0], c[1].rsplit("/", 1)[1]) for c in server.calls if "secrets/raw" in c[1]]
-    assert writes == [("PATCH", "CHATGPT_TOKEN"), ("POST", "CHATGPT_TOKEN")]
-    assert "/lifeos/agents" not in infisical._cache  # pyright: ignore[reportPrivateUsage]
+    assert folders == ["platform", "lifeos-signing"]  # an existing folder is fine
+    assert [c[0] for c in server.calls if "secrets/raw" in c[1]] == ["PATCH", "POST"]
+    assert "/platform/lifeos-signing" not in infisical._cache  # pyright: ignore[reportPrivateUsage]
     with pytest.raises(ValueError, match="empty"):
         infisical.upsert_secret("/lifeos/agents", "X_TOKEN", "")
+
+
+def test_upsert_reports_the_real_failure() -> None:
+    with pytest.raises(RuntimeError, match=r"update .*\(HTTP 429\)"):
+        infisical_with(Server(patch_status=429)).upsert_secret("/lifeos/agents", "A", "v")
+    with pytest.raises(RuntimeError, match=r"folder platform \(HTTP 403\)"):
+        infisical_with(Server(patch_status=404, folder_status=403)).upsert_secret(
+            "/platform/lifeos-signing", "A", "v"
+        )
+
+
+def test_the_signing_key_is_kept_apart_from_the_tokens() -> None:
+    assert PRIVATE_KEY[0] != TOKENS_PATH and PRIVATE_KEY[0].startswith("/platform/")
 
 
 def test_the_op_is_r2_and_the_owner_action_resolves_through_it() -> None:

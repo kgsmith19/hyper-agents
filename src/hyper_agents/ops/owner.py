@@ -26,7 +26,7 @@ from hyper_agents.domain.owner_actions import (
 )
 from hyper_agents.ops.adapters import ASSIGNABLE_ROLES
 from hyper_agents.ops.fleet import Fleet, RepoAdapter
-from hyper_agents.ops.lifeos_tokens import RENEW_WITHIN, unverified_expiry
+from hyper_agents.ops.lifeos_tokens import CONTROLLERS, PUBLIC_KEY, RENEW_WITHIN, token_state
 
 
 @dataclass(frozen=True)
@@ -220,23 +220,29 @@ class OwnerAdapter:
         return Status(False, f"{why}; left: {', '.join(remaining)}")
 
     def _controller_tokens_fresh(self, action: OwnerAction) -> Status:
-        """Each controller token is in the vault with more than the renewal margin left.
-        Reads ``exp`` without verifying (the check holds no key); the renew op verifies."""
+        """Each controller token verifies against the deployed public key, carries the
+        right subject and roles, and has more than the renewal margin left."""
         params = dict(action.check_params)
         path = params["path"]
+        try:
+            public = self._secrets.get(*PUBLIC_KEY)
+        except LookupError:
+            return Status(False, "no signing key in the vault yet")
         problems: list[str] = []
         soonest: datetime | None = None
         for name in params["names"].split(","):
             name = name.strip()
+            agent, roles = CONTROLLERS[name]
             try:
-                expires = unverified_expiry(self._secrets.get(path, name))
+                held: str | None = self._secrets.get(path, name)
             except LookupError:
                 problems.append(f"{name} missing")
                 continue
-            if expires is None:
-                problems.append(f"{name} unreadable")
-            elif expires - self._now() <= RENEW_WITHIN:
-                problems.append(f"{name} expires {expires:%Y-%m-%d}")
+            state, expires = token_state(held, public, agent, roles, self._now())
+            if state == "invalid":
+                problems.append(f"{name} invalid")
+            elif state == "expiring" or expires is None:
+                problems.append(f"{name} expires {expires:%Y-%m-%d}" if expires else name)
             else:
                 soonest = expires if soonest is None else min(soonest, expires)
         if problems:

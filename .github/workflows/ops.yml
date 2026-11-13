@@ -26,6 +26,12 @@ on:
 
 permissions: {}
 
+# One run per op at a time, queued not cancelled: two concurrent writes of the same vault
+# entries (e.g. a resolver dispatch and a manual run of a key-creating op) never interleave.
+concurrency:
+  group: ops-broker-${{ inputs.op }}
+  cancel-in-progress: false
+
 env:
   UV_VERSION: "0.11.32"
   # Not secrets: the Infisical project (central-vault) and the broker identity

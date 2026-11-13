@@ -48,5 +48,8 @@ One Infisical project (display name `central-vault`) holds every repository's se
 
 | Path | Names | Writer | Reader |
 |---|---|---|---|
-| `/lifeos/agents/` | `CLAUDE_CODE_TOKEN`, `CHATGPT_TOKEN`, `LIFEOS_AGENT_JWT_PRIVATE_KEY` | `lifeos.controller_tokens.renew` (R2, ops-r2), renewed within 7 days of expiry | Claude Code sessions; the ChatGPT connector (pasted once) |
+| `/lifeos/agents/` | `CLAUDE_CODE_TOKEN`, `CHATGPT_TOKEN` | `lifeos.controller_tokens.renew` (R2, ops-r2), renewed within 7 days of expiry | Claude Code sessions; the ChatGPT connector (pasted once) |
+| `/platform/lifeos-signing/` | `LIFEOS_AGENT_JWT_PRIVATE_KEY` | the same op, once, when neither key half exists; never rotated | the broker only (whoever reads it can mint any token) |
 | `/platform/lifeos-deploy/` | `LIFEOS_AGENT_JWT_PUBLIC_KEY` | the same op, once, when neither key half exists; never rotated | `ops/cloud/remote.sh` into the LifeOS API env |
+
+The signing key lives apart from the tokens so that a folder-scoped privilege can deny agents access to it. Until those privileges exist, every viewer identity can still read every path: see `access-model.md`.

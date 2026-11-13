@@ -6,16 +6,17 @@ iss="lifeos", aud="lifeos-mcp", sub="agent:<name>", iat, exp, scopes=["agents:re
 and a sorted, non-empty ``roles`` list. Keys are base64-wrapped PEM (PKCS8 private,
 SubjectPublicKeyInfo public).
 
-Vault layout: tokens and the private key at ``/lifeos/agents``, the public key at
-``/platform/lifeos-deploy`` (the LifeOS deploy reads it). A key pair is created only when
-neither half exists and is never rotated: a deployed public key must stay valid. Values
+Vault layout: tokens at ``/lifeos/agents`` (read by the agents), the private signing key
+at ``/platform/lifeos-signing`` (broker only: whoever reads it can mint any token), the
+public key at ``/platform/lifeos-deploy`` (the LifeOS deploy reads it). A key pair is
+created only when neither half exists and is never rotated: a deployed public key must
+stay valid. Values
 never leave this module except into the vault; receipts carry names, fingerprints and
 expiry dates only.
 """
 
 import base64
 import binascii
-import json
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
@@ -33,7 +34,7 @@ from hyper_agents.ops.core import fingerprint
 
 ISSUER, AUDIENCE, SCOPE, ALGORITHM = "lifeos", "lifeos-mcp", "agents:request", "ES256"
 TOKENS_PATH = "/lifeos/agents"
-PRIVATE_KEY: tuple[str, str] = ("/lifeos/agents", "LIFEOS_AGENT_JWT_PRIVATE_KEY")
+PRIVATE_KEY: tuple[str, str] = ("/platform/lifeos-signing", "LIFEOS_AGENT_JWT_PRIVATE_KEY")
 PUBLIC_KEY: tuple[str, str] = ("/platform/lifeos-deploy", "LIFEOS_AGENT_JWT_PUBLIC_KEY")
 VALID_FOR = timedelta(days=30)
 RENEW_WITHIN = timedelta(days=7)
@@ -76,10 +77,11 @@ def mint(private_b64: str, agent: str, roles: tuple[str, ...], now: datetime) ->
 
 def token_state(
     token: str | None, public_b64: str, agent: str, roles: tuple[str, ...], now: datetime
-) -> str:
-    """``fresh``, ``expiring`` (renew), or ``invalid`` (missing, wrong key or claims)."""
+) -> tuple[str, datetime | None]:
+    """(``fresh`` | ``expiring`` | ``invalid``, expiry). ``invalid`` covers missing, wrong
+    key, wrong claims and unreadable expiry; ``expiring`` means renew now."""
     if not token:
-        return "invalid"
+        return "invalid", None
     try:
         claims = jwt.decode(
             token,
@@ -95,25 +97,24 @@ def token_state(
                 "verify_iat": False,
             },
         )
-    except (jwt.PyJWTError, ValueError, binascii.Error):
-        return "invalid"
+        expires = datetime.fromtimestamp(int(claims["exp"]), UTC)
+    except (jwt.PyJWTError, ValueError, TypeError, OverflowError, OSError, binascii.Error):
+        return "invalid", None
     if (
         claims.get("sub") != f"agent:{agent}"
         or claims.get("scopes") != [SCOPE]
         or claims.get("roles") != sorted(roles)
     ):
-        return "invalid"
-    expires = datetime.fromtimestamp(int(claims["exp"]), UTC)
-    return "fresh" if expires - now > RENEW_WITHIN else "expiring"
+        return "invalid", expires
+    return ("fresh" if expires - now > RENEW_WITHIN else "expiring"), expires
 
 
 def unverified_expiry(token: str) -> datetime | None:
-    """A token's ``exp`` without verifying it: for freshness checks that hold no key."""
+    """A token's ``exp`` without verifying it (diagnostics only)."""
     try:
-        payload = token.split(".")[1]
-        claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+        claims = jwt.decode(token, options={"verify_signature": False})
         return datetime.fromtimestamp(int(claims["exp"]), UTC)
-    except (IndexError, ValueError, KeyError, TypeError, binascii.Error):
+    except (jwt.PyJWTError, ValueError, KeyError, TypeError, OverflowError, OSError):
         return None
 
 
@@ -159,25 +160,29 @@ class LifeosAdapter:
             )
         else:
             keys = "existing"
+        # Re-read both halves: a concurrent run may have written a different pair.
+        private, public = _held(self._vault, *PRIVATE_KEY), _held(self._vault, *PUBLIC_KEY)
+        if private is None or public is None:
+            raise RuntimeError("the key pair vanished during the run; retry")
         probe = mint(private, "probe", ("reliability_engineer",), now)
-        if token_state(probe, public, "probe", ("reliability_engineer",), now) != "fresh":
+        if token_state(probe, public, "probe", ("reliability_engineer",), now)[0] != "fresh":
             raise PermissionError("the vault key pair does not match; refusing to mint")
         tokens: dict[str, dict[str, str]] = {}
         for name, (agent, roles) in CONTROLLERS.items():
             held = _held(self._vault, TOKENS_PATH, name)
-            state = token_state(held, public, agent, roles, now)
-            if state == "fresh" and held is not None:
-                expires = unverified_expiry(held)
+            state, expires = token_state(held, public, agent, roles, now)
+            if state == "fresh" and held is not None and expires is not None:
                 tokens[name] = {
                     "action": "fresh",
-                    "expires": expires.isoformat() if expires else "",
+                    "expires": expires.isoformat(),
                     "fingerprint": fingerprint(held),
                 }
                 continue
             token = mint(private, agent, roles, now)
+            minted_expiry = token_state(token, public, agent, roles, now)[1]
             tokens[name] = {
                 "action": f"minted ({state})",
-                "expires": (now + VALID_FOR).isoformat(),
+                "expires": minted_expiry.isoformat() if minted_expiry else "",
                 "fingerprint": _store(self._vault, TOKENS_PATH, name, token),
             }
         return {"keys": keys, "public_key_fingerprint": fingerprint(public), "tokens": tokens}
