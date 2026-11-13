@@ -2,8 +2,9 @@ name: Ops broker
 
 # Runs one registered op from ops/registry.yaml. Dispatch-only, and only from main, so a
 # new op needs a merged PR first. Inputs reach the shell only through env:, never inline.
-# Routing: R0/R1 apply with no environment; R2 apply waits for the ops-r2 environment,
-# whose required reviewer is the owner. The plan job needs no credentials.
+# Routing: R0/R1 apply with no environment; R2 apply runs in the ops-r2 environment, which
+# scopes the ops OIDC identity to main and has no required reviewer. The plan job needs no
+# credentials.
 on:
   workflow_dispatch:
     inputs:
@@ -107,7 +108,7 @@ jobs:
         run: uv run python -m hyper_agents.ops run --op "$OP" --params "$PARAMS" --mode apply
 
   apply-r2:
-    name: Apply (R2, owner approval via ops-r2)
+    name: Apply (R2, ops-r2 environment)
     needs: plan
     if: inputs.mode == 'apply' && needs.plan.outputs.tier == 'R2'
     runs-on: ubuntu-latest

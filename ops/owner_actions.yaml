@@ -31,18 +31,19 @@ actions:
       - Nothing else. The next maintenance run (within 30 minutes) ticks this off.
 
   - id: settings-apply
-    title: "Approve repository settings (one click per repository)"
+    title: "Repository settings apply without a reviewer (one-time setting)"
     why: >-
       Declared settings such as delete-branch-on-merge are not enforced yet; reused branches
-      then conflict and get no CI.
+      then conflict and get no CI. Agents start the settings runs; they must run without a
+      human click (owner decision 2026-11-13).
     check: settings_clean
     steps:
       - >-
-        Nothing to start: once the ops token works, maintenance starts one settings-apply run
-        per repository that drifts.
+        One time: GitHub → hyper-agents → Settings → Environments → `ops-r2` → untick
+        **Required reviewers** and save. Keep the environment and its `main` branch rule.
       - >-
-        Open the [Ops broker runs](https://github.com/kgsmith19/hyper-agents/actions/workflows/ops.yml)
-        and click **Review deployments → Approve** on each waiting run (several at once is fine).
+        Nothing else. Maintenance starts one settings-apply run per drifting repository, they
+        run unattended, and this item ticks itself off once settings match.
 
   - id: controller-tokens
     title: "LifeOS controller tokens: one approval, then auto-renewing"

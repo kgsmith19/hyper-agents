@@ -12,7 +12,10 @@ Where each secret lives: [secrets-index.md](secrets-index.md).
 2. `plan` resolves the op's tier with `python -m hyper_agents.ops tier`. An unregistered op fails here.
    It runs a dry-run receipt, needs no credentials, and writes the plan to the job summary.
 3. `apply-r0-r1` runs R0 and R1 applies with no environment.
-4. `apply-r2` runs R2 applies in the `ops-r2` environment. The owner must approve the run in GitHub.
+4. `apply-r2` runs R2 applies in the `ops-r2` environment. The environment scopes the broker's
+   Infisical OIDC identity (subject `environment:ops-r2`) and restricts runs to `main`. It has **no
+   required reviewer**: agents request R2 ops and they run without a human click (owner decision
+   2026-11-13).
 5. The adapter authenticates to Infisical with GitHub OIDC (identity `INFISICAL_OPS_IDENTITY_ID`, set in `ops.yml`),
    or with `INFISICAL_CLIENT_ID`/`INFISICAL_CLIENT_SECRET` locally. GitHub writes use a PAT that
    lives in Infisical at `prod` `/ops/GITHUB_OPS_PAT` and is fetched only inside the runner.
@@ -23,7 +26,7 @@ Where each secret lives: [secrets-index.md](secrets-index.md).
 |---|---|---|
 | R0 | read: list names, check that a secret exists | none |
 | R1 | reversible write (for example a variable) | none, after dry-run |
-| R2 | secret set or delete | `ops-r2` environment, owner approval |
+| R2 | secret set or delete, settings apply | `ops-r2` environment (OIDC scope, `main` only, no reviewer) |
 | R3 | destructive or costly | not wired; the plan job fails on R3 |
 
 ## Registry
@@ -61,8 +64,9 @@ Owner-only steps. The sandbox proxy blocks these APIs, and a PAT can only be cre
 1. **GitHub PAT.** Create a fine-grained PAT for `kgsmith19/hyper-agents` with repository permissions:
    Secrets (write), Variables (write), Actions (read). Store it in Infisical at `prod` `/ops/` as
    `GITHUB_OPS_PAT`. Never paste it into chat or a repo file.
-2. **Environment.** GitHub → Settings → Environments → new `ops-r2`. Add yourself as a required
-   reviewer. Restrict deployment branches to `main`.
+2. **Environment.** GitHub → Settings → Environments → `ops-r2`. Restrict deployment branches to
+   `main`. Do **not** add a required reviewer: R2 ops run without a human click (owner decision
+   2026-11-13). Keep the environment itself, because the ops identity's OIDC subject names it.
 
 ## D5 bounds (recorded before the first gated write)
 

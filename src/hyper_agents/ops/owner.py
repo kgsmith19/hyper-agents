@@ -113,7 +113,7 @@ class OwnerAdapter:
         drifting = {repo: drift for repo, drift in self._drifts().items() if drift}
         if drifting:
             parts = [f"{repo}: {', '.join(sorted(d))}" for repo, d in sorted(drifting.items())]
-            return Status(False, "drift awaiting approval: " + "; ".join(parts))
+            return Status(False, "drift being applied: " + "; ".join(parts))
         return Status(True, f"settings match the declared profile in all {len(self._fleet.repos)}")
 
     def _secrets_present(self, action: OwnerAction) -> Status:
