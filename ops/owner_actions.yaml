@@ -81,39 +81,43 @@ actions:
         run unattended, and this item ticks itself off once settings match.
 
   - id: controller-tokens
-    title: "LifeOS controller tokens: one approval, then auto-renewing"
+    title: "LifeOS controller tokens: minted and renewed automatically"
     why: >-
       Claude Code (financial_operations, reliability_engineer) and ChatGPT
       (communications, household_operations) each need their own agents:request token
-      to ask the LifeOS role gate for decisions (hyperbolic-core #596).
-    check: secrets_present
+      to ask the LifeOS role gate for decisions (hyperbolic-core #596). The broker mints
+      them into /lifeos/agents and renews them before expiry; nothing needs approving.
+    check: controller_tokens_fresh
+    params:
+      path: /lifeos/agents
+      names: CLAUDE_CODE_TOKEN,CHATGPT_TOKEN
+    resolver:
+      op: lifeos.controller_tokens.renew
+      max_attempts: 2
     blocker:
       blocker_id: MB-004
       provider: lifeos
       capability: controller agent tokens
       resource: Infisical /lifeos/agents (CLAUDE_CODE_TOKEN, CHATGPT_TOKEN)
-      failure_class: approval_gate
+      failure_class: tooling_permission
       attempts:
-        - "The hyperbolic-core controller mint run is automated and renews every ~25 days."
-        - "Its first mint waits on the owner-approval environment by design."
-      why_human_only: The first mint establishes trust for two agent identities; the owner approves it once.
-      minimum_human_action: Approve the controller-token run once; paste the ChatGPT token into its connector once.
-      required_access: Owner approval on hyperbolic-core owner-approval; ChatGPT connector UI
-      safety: Tokens are minted straight into the vault and never printed; revoking them in LifeOS is immediate.
-      validation: Both names exist at /lifeos/agents and one scoped low-risk request succeeds.
+        - "The resolver dispatches lifeos.controller_tokens.renew (R2, ops-r2) while a token is missing or near expiry."
+        - "The old owner-approval run never existed; minting was a manual script."
+      why_human_only: Only if renewal fails twice in a week, or half of the key pair is missing.
+      minimum_human_action: Read the failed renew run's error; import the missing key half or remove the other.
+      required_access: Infisical write on /lifeos/agents and /platform/lifeos-deploy
+      safety: >-
+        Tokens are written straight to the vault and read back by fingerprint, never
+        printed; the key pair is created only when neither half exists and never rotated.
+      validation: Both tokens are in the vault with more than 7 days left.
       owner: kgsmith19
-      source: https://github.com/kgsmith19/hyperbolic-core/issues/573
-    params:
-      path: /lifeos/agents
-      names: CLAUDE_CODE_TOKEN,CHATGPT_TOKEN
+      source: https://github.com/kgsmith19/hyper-agents/issues/82
     steps:
       - >-
-        When the hyperbolic-core "LifeOS controller tokens" run asks for `owner-approval`,
-        click **Review deployments → Approve**. It mints both tokens into Infisical
-        `/lifeos/agents` (never printed) and renews them every ~25 days without asking again.
-      - >-
-        Connect ChatGPT once: paste `/lifeos/agents/CHATGPT_TOKEN` into the LifeOS connector.
-        Claude Code picks its token up by itself.
+        Open the latest failed `Ops broker` run for `lifeos.controller_tokens.renew` and
+        read its error. If it says half of the key pair is missing, import that half into
+        Infisical (or delete the other half so the next run creates a fresh pair).
+      - Nothing else. The next maintenance run retries and ticks this off.
 
   - id: branch-prune
     title: "Stale branches: one permission edit (or one script run)"

@@ -199,3 +199,14 @@ ops:
     adapter: owner
     action: status
     tier: R1
+
+  # LifeOS controller tokens (MB-004). R2: writes the vault. Creates the ES256 key pair only
+  # when neither half exists (never rotates), then mints CLAUDE_CODE_TOKEN and CHATGPT_TOKEN
+  # into /lifeos/agents when missing, invalid or within 7 days of expiry. Receipt: names,
+  # fingerprints and expiry only.
+  - id: lifeos.controller_tokens.renew
+    adapter: lifeos
+    action: renew
+    tier: R2
+    gate: ops-r2
+    params: []

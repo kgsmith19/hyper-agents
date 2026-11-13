@@ -18,6 +18,7 @@ from typing import Any, cast
 from hyper_agents.ops.adapters import CliAdapter, GithubAdapter, InfisicalAdapter, VendorAdapter
 from hyper_agents.ops.core import OpRefused, run_op
 from hyper_agents.ops.fleet import RepoAdapter, load_fleet
+from hyper_agents.ops.lifeos_tokens import LifeosAdapter
 from hyper_agents.ops.owner import OwnerAdapter, load_owner_actions
 from hyper_agents.ops.registry import load_registry
 
@@ -72,6 +73,7 @@ def main(argv: list[str] | None = None) -> int:
         "vendor": VendorAdapter(infisical),
         "cli": CliAdapter(),
         "repo": RepoAdapter(load_fleet(args.fleet), infisical),
+        "lifeos": LifeosAdapter(infisical),
         "owner": OwnerAdapter(
             load_fleet(args.fleet),
             load_owner_actions(args.owner_actions, load_registry(args.registry)),

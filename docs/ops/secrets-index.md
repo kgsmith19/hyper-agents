@@ -43,3 +43,10 @@ One Infisical project (display name `central-vault`) holds every repository's se
 - `/platform/llm-handler/TOOLBELT_GITHUB_INTAKE_PAT` has admin on six repos. Rotate to a narrow token.
 - Duplicates: `BROKER_CALLER_TOKEN` is in both `/platform/broker/` and `/platform/llm-handler/`.
 - `/AGENT_*` entries are documents, not credentials. They belong in a repo.
+
+## LifeOS controller tokens (#82)
+
+| Path | Names | Writer | Reader |
+|---|---|---|---|
+| `/lifeos/agents/` | `CLAUDE_CODE_TOKEN`, `CHATGPT_TOKEN`, `LIFEOS_AGENT_JWT_PRIVATE_KEY` | `lifeos.controller_tokens.renew` (R2, ops-r2), renewed within 7 days of expiry | Claude Code sessions; the ChatGPT connector (pasted once) |
+| `/platform/lifeos-deploy/` | `LIFEOS_AGENT_JWT_PUBLIC_KEY` | the same op, once, when neither key half exists; never rotated | `ops/cloud/remote.sh` into the LifeOS API env |

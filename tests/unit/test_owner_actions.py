@@ -1,5 +1,6 @@
 """The owner-actions checklist: live checks, one tracker item, weekly reminders, gated apply."""
 
+import base64
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -121,6 +122,15 @@ def _owner(fake: FakeForge, secrets: Any) -> OwnerAdapter:
     )
 
 
+def _jwt_expiring(when: datetime) -> str:
+    """A JWT-shaped string with only an ``exp`` claim (the freshness check reads it unverified)."""
+
+    def part(data: dict[str, object]) -> str:
+        return base64.urlsafe_b64encode(json.dumps(data).encode()).decode().rstrip("=")
+
+    return f"{part({'alg': 'ES256'})}.{part({'exp': int(when.timestamp())})}.sig"
+
+
 class Vault:
     def __init__(self, held: dict[tuple[str, str], str]) -> None:
         self.held = held
@@ -141,8 +151,10 @@ def test_without_the_ops_token_every_action_is_pending_and_nothing_is_dispatched
     assert report["pending"] == ["ops-token", "settings-apply", "controller-tokens"]
     details = cast(dict[str, str], report["details"])
     assert "missing administration (read settings), issues (write)" in str(details["ops-token"])
-    assert "CLAUDE_CODE_TOKEN, CHATGPT_TOKEN" in str(details["controller-tokens"])
-    assert not [w for w in fake.writes if w[0] == "dispatch"]
+    assert "CLAUDE_CODE_TOKEN missing, CHATGPT_TOKEN missing" in str(details["controller-tokens"])
+    ops = [cast(dict[str, str], w[1])["op"] for w in fake.writes if w[0] == "dispatch"]
+    # No settings run without the token; only the token resolver may start (#82).
+    assert ops == ["lifeos.controller_tokens.renew"]
 
 
 def test_with_the_token_drift_is_dispatched_and_tokens_tick_off() -> None:
@@ -153,8 +165,9 @@ def test_with_the_token_drift_is_dispatched_and_tokens_tick_off() -> None:
             repo: Access(True, True, NOW + timedelta(days=300)) for repo in fleet.repos
         },
     )
+    fresh = _jwt_expiring(NOW + timedelta(days=30))
     vault = Vault(
-        {("/lifeos/agents", "CLAUDE_CODE_TOKEN"): "t1", ("/lifeos/agents", "CHATGPT_TOKEN"): "t2"}
+        {("/lifeos/agents", "CLAUDE_CODE_TOKEN"): fresh, ("/lifeos/agents", "CHATGPT_TOKEN"): fresh}
     )
     report = _owner(fake, vault).execute("status", {})
     assert report["pending"] == ["settings-apply"]
