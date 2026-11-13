@@ -94,6 +94,9 @@ class FakeForge:
     def open_change_refs(self, repo: str) -> set[str]:
         return {r for c in self.open for r in (c.head_ref, c.base_ref) if r}
 
+    def branch_names(self, repo: str) -> list[str]:
+        return sorted(self.branches)
+
     def branch_head(self, repo: str, branch: str) -> str | None:
         return self.branches.get(branch)
 

@@ -219,3 +219,26 @@ def _prune_one(
     except Exception as error:  # one branch's failure never stops the others
         return f"failed:{type(error).__name__}: {error}"
     return "archived_and_deleted" if entry.archive else "deleted"
+
+
+def ledger_drift(
+    forge: ForgePort,
+    repo: str,
+    ledger: tuple[LedgerBranch, ...],
+    *,
+    default_branch: str = "main",
+) -> dict[str, object]:
+    """Read-only: branches that are neither the default, in the prune ledger, nor the head
+    or base of an open change. These are candidates to reconcile and add to the ledger;
+    nothing is deleted here."""
+    listed = {entry.branch for entry in ledger}
+    in_use = forge.open_change_refs(repo)
+    unledgered = sorted(
+        name
+        for name in forge.branch_names(repo)
+        if name != default_branch
+        and name not in PROTECTED_BRANCHES
+        and name not in listed
+        and name not in in_use
+    )
+    return {"repo": repo, "unledgered": unledgered, "count": len(unledgered)}

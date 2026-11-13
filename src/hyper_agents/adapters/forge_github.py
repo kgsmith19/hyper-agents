@@ -359,6 +359,17 @@ class GithubForge:
                 return refs
         raise RuntimeError(f"more than {_MAX_PAGES * 100} open changes in {repo}")
 
+    def branch_names(self, repo: str) -> list[str]:
+        """Every branch name in the repository, across all pages."""
+        names: list[str] = []
+        base = f"/repos/{self._repo(repo)}/branches?per_page=100"
+        for page in range(1, _MAX_PAGES + 1):
+            found = cast(list[dict[str, Any]], self._call("GET", f"{base}&page={page}") or [])
+            names.extend(str(b.get("name")) for b in found if b.get("name"))
+            if len(found) < 100:
+                return names
+        raise RuntimeError(f"more than {_MAX_PAGES * 100} branches in {repo}")
+
     def branch_head(self, repo: str, branch: str) -> str | None:
         return self._ref_head(repo, f"heads/{branch}")
 
