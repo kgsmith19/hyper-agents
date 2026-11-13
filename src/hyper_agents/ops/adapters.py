@@ -8,6 +8,7 @@ import json
 import os
 import shutil
 import subprocess
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping
@@ -18,6 +19,9 @@ from hyper_agents.ops.core import fingerprint, redact
 
 INFISICAL_API = "https://app.infisical.com/api"
 INFISICAL_ENVIRONMENT = "prod"
+# One listing per folder per run: every forge request reads its token through `get`, and
+# re-listing on each call hit Infisical's rate limit (HTTP 429) during `maintain`.
+SECRETS_CACHE_SECONDS = 300.0
 OIDC_AUDIENCE = "https://github.com/kgsmith19"
 PAT_PATH, PAT_NAME = "/ops/", "GITHUB_OPS_PAT"
 SETTINGS_JQ = (
@@ -58,9 +62,17 @@ def _github_oidc_jwt() -> str:
 
 
 class InfisicalAdapter:
-    def __init__(self, project_id: str) -> None:
+    def __init__(
+        self,
+        project_id: str,
+        fetch: Callable[[str, str], dict[str, Any]] | None = None,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
         self._project_id = project_id
         self._token: str | None = None
+        self._fetch = fetch or _get
+        self._clock = clock
+        self._cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 
     def _access_token(self) -> str:
         if self._token is None:
@@ -84,11 +96,23 @@ class InfisicalAdapter:
         return self._token
 
     def _secrets(self, path: str) -> list[dict[str, Any]]:
+        """The folder's secrets, listed at most once per ``SECRETS_CACHE_SECONDS``. A folder
+        that does not exist (HTTP 404) lists as empty, so a lookup in it reads as missing."""
+        cached = self._cache.get(path)
+        if cached is not None and self._clock() - cached[0] < SECRETS_CACHE_SECONDS:
+            return cached[1]
         url = (
             f"{INFISICAL_API}/v3/secrets/raw?workspaceId={quote(self._project_id)}"
             f"&environment={INFISICAL_ENVIRONMENT}&secretPath={quote(path, safe='')}"
         )
-        return list(_get(url, self._access_token())["secrets"])
+        try:
+            items = list(self._fetch(url, self._access_token())["secrets"])
+        except urllib.error.HTTPError as error:
+            if error.code != 404:
+                raise
+            items = []
+        self._cache[path] = (self._clock(), items)
+        return items
 
     def get(self, path: str, name: str) -> str:
         for item in self._secrets(path):
