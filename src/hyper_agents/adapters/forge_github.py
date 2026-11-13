@@ -299,6 +299,14 @@ class GithubForge:
             str(c.get("body") or "").startswith(marker) for c in self._comments(repo, number)
         )
 
+    def note_body(self, repo: str, number: int, marker: str) -> str | None:
+        """The text after ``marker`` in the item's first note that starts with it."""
+        for comment in self._comments(repo, number):
+            body = str(comment.get("body") or "")
+            if body.startswith(marker):
+                return body[len(marker) :].lstrip("\n")
+        return None
+
     def _comments(self, repo: str, number: int) -> list[dict[str, Any]]:
         """Every comment on an item, across pages, so marker dedupe holds past 100 comments."""
         base = f"/repos/{self._repo(repo)}/issues/{number}/comments?per_page=100"

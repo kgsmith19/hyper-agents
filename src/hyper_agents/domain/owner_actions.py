@@ -36,6 +36,18 @@ class BlockerSpec:
 
 
 @dataclass(frozen=True)
+class Resolver:
+    """An automated fix for an action: the registered op to dispatch while the check fails.
+
+    It is tried at most ``max_attempts`` times per distinct piece of evidence; only then
+    does the action ask a human.
+    """
+
+    op: str
+    max_attempts: int = 2
+
+
+@dataclass(frozen=True)
 class OwnerAction:
     id: str
     title: str
@@ -44,12 +56,18 @@ class OwnerAction:
     check: str
     check_params: tuple[tuple[str, str], ...] = ()
     blocker: BlockerSpec | None = None
+    resolver: Resolver | None = None
 
 
 @dataclass(frozen=True)
 class Status:
     done: bool
     detail: str
+    # Param sets for the action's resolver op, one dispatch each (e.g. one per drifting
+    # repository). Empty means one dispatch with no params.
+    fixes: tuple[tuple[tuple[str, str], ...], ...] = ()
+    # An automated fix is in flight: the human steps are not needed yet.
+    resolving: bool = False
 
 
 def blocker_record(action: OwnerAction, status: "Status", now: datetime) -> ManualBlocker:
@@ -84,7 +102,7 @@ def _blocker_status(status: "Status") -> BlockerStatus:
     """A check that crashed proves nothing about the human boundary: watch, not open."""
     if status.done:
         return BlockerStatus.RESOLVED
-    if status.detail.startswith(CHECK_FAILED):
+    if status.resolving or status.detail.startswith(CHECK_FAILED):
         return BlockerStatus.WATCH
     return BlockerStatus.OPEN
 
@@ -120,7 +138,9 @@ def render(actions: tuple[OwnerAction, ...], statuses: dict[str, Status], now: d
             f"- [{box}] **{'Done' if status.done else 'Pending'}:** {status.detail}",
             f"- **Why:** {action.why}",
         ]
-        if not status.done:
+        if status.resolving:
+            lines += ["", "Nothing to do yet: an automated fix is running."]
+        elif not status.done:
             lines += ["", "**Steps:**", *[f"{n}. {step}" for n, step in enumerate(action.steps, 1)]]
         sections.append("\n".join(lines) + "\n")
     return "\n".join(sections)
