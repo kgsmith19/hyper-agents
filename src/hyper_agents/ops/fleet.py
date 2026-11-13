@@ -99,6 +99,7 @@ class RepoAdapter:
             lambda: str(secrets.get(fleet.token_path, fleet.token_name)), fleet.api
         )
         self._now = clock or (lambda: datetime.now(UTC))
+        self._pruned: dict[str, dict[str, Any]] = {}
 
     @property
     def forge(self) -> ForgePort:
@@ -112,8 +113,24 @@ class RepoAdapter:
         return cast(dict[str, object], json.loads(text))
 
     def branch_prune(self, repo: str, *, apply: bool) -> dict[str, Any]:
+        """Run the prune; remember the latest report per repository, failed runs included."""
         ledger = self._fleet.branch_ledger.get(repo, ())
-        return maintenance.branch_prune(self._forge, repo, ledger, apply=apply)
+        try:
+            report = maintenance.branch_prune(self._forge, repo, ledger, apply=apply)
+        except maintenance.PruneFailed as error:
+            self._pruned[repo] = cast(dict[str, Any], json.loads(str(error)))
+            raise
+        self._pruned[repo] = report
+        return report
+
+    def prune_state(self, repo: str) -> dict[str, Any]:
+        """The latest prune report for ``repo`` (this process), else a fresh dry run."""
+        if repo not in self._pruned:
+            try:
+                self.branch_prune(repo, apply=False)
+            except maintenance.PruneFailed:
+                pass
+        return self._pruned[repo]
 
     def execute(self, action: str, params: Mapping[str, str]) -> dict[str, Any]:
         repo = params["repo"]

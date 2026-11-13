@@ -21,6 +21,7 @@ class FakeForge:
     branches: dict[str, str] = field(default_factory=lambda: {})
     tags: dict[str, str] = field(default_factory=lambda: {})
     refs_writable: bool = True
+    refused: set[str] = field(default_factory=lambda: set[str]())
 
     def merged_changes_since(self, repo: str, since: datetime) -> list[Change]:
         return [c for c in self.merged if c.merged_at is not None and c.merged_at >= since]
@@ -85,6 +86,9 @@ class FakeForge:
     def dispatch(self, repo: str, workflow: str, ref: str, inputs: dict[str, str]) -> None:
         self.writes.append(("dispatch", dict(inputs)))
 
+    def open_change_refs(self, repo: str) -> set[str]:
+        return {r for c in self.open for r in (c.head_ref, c.base_ref) if r}
+
     def branch_head(self, repo: str, branch: str) -> str | None:
         return self.branches.get(branch)
 
@@ -100,5 +104,7 @@ class FakeForge:
     def delete_branch(self, repo: str, branch: str) -> None:
         if not self.refs_writable:
             raise PermissionError("the credential cannot delete refs (HTTP 403)")
-        self.branches.pop(branch, None)
         self.writes.append(("delete_branch", branch))
+        if branch in self.refused:  # the host refuses the delete (e.g. a ruleset)
+            return
+        self.branches.pop(branch, None)

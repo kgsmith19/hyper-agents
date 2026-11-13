@@ -335,6 +335,22 @@ class GithubForge:
             return None
         return str(cast(dict[str, Any], body["object"])["sha"])
 
+    def open_change_refs(self, repo: str) -> set[str]:
+        """Head and base branch names of every open change, across all pages, from the
+        listing alone (no per-change reads). Deleting either would close the change."""
+        refs: set[str] = set()
+        base = f"/repos/{self._repo(repo)}/pulls?state=open&per_page=100"
+        for page in range(1, _MAX_PAGES + 1):
+            found = cast(list[dict[str, Any]], self._call("GET", f"{base}&page={page}") or [])
+            for pull in found:
+                for side in ("head", "base"):
+                    ref = str(cast(dict[str, Any], pull.get(side) or {}).get("ref") or "")
+                    if ref:
+                        refs.add(ref)
+            if len(found) < 100:
+                return refs
+        raise RuntimeError(f"more than {_MAX_PAGES * 100} open changes in {repo}")
+
     def branch_head(self, repo: str, branch: str) -> str | None:
         return self._ref_head(repo, f"heads/{branch}")
 
@@ -345,7 +361,7 @@ class GithubForge:
         status, _ = self._status_call(
             "POST", f"/repos/{self._repo(repo)}/git/refs", {"ref": f"refs/tags/{tag}", "sha": sha}
         )
-        if status in (401, 403, 404):
+        if status in (401, 403):
             raise PermissionError(f"the credential cannot create refs (HTTP {status})")
         if status >= 400 and status != 422:  # 422: the tag already exists; the caller reads back
             raise RuntimeError(f"create tag {tag} failed with HTTP {status}")
@@ -354,9 +370,11 @@ class GithubForge:
         status, _ = self._status_call(
             "DELETE", f"/repos/{self._repo(repo)}/git/refs/heads/{quote(branch, safe='/')}"
         )
-        if status in (401, 403, 404):
+        if status in (401, 403):
             raise PermissionError(f"the credential cannot delete refs (HTTP {status})")
-        if status >= 400 and status != 422:  # 422: already gone; the caller reads back
+        # 404/422: already gone, or refused (protection, ruleset). The caller reads back and
+        # reports which; neither is a credential problem.
+        if status >= 400 and status not in (404, 422):
             raise RuntimeError(f"delete branch {branch} failed with HTTP {status}")
 
 

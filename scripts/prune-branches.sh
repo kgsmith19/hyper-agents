@@ -2,6 +2,7 @@
 # Owner-run, once: prune the reconciled branches (docs/ops/branch-reconciliation-2026-11-13.md).
 # The same list lives in ops/branch_ledger.yaml, which `maintain` prunes by itself once the ops
 # token has Contents write; this script is the owner's equivalent and either may run first.
+# tests/unit/test_branch_prune.py fails if this list and ops/branch_ledger.yaml ever differ.
 # Each branch is deleted only if its live head still equals the recorded SHA. Superseded
 # branches are tagged archive/<branch> at that SHA first. Needs `gh auth login` as the owner.
 # Safe to re-run: missing branches and existing tags are skipped.

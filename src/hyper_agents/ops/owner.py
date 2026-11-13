@@ -69,11 +69,13 @@ class OwnerAdapter:
         secrets: Any,
         forge: ForgePort | None = None,
         clock: Callable[[], datetime] | None = None,
+        repos: RepoAdapter | None = None,
     ) -> None:
         self._fleet = fleet
         self._config = config
         self._secrets = secrets
-        self._repos = RepoAdapter(fleet, secrets, forge=forge, clock=clock)
+        # Sharing maintain's RepoAdapter lets checks reuse reports it already produced.
+        self._repos = repos or RepoAdapter(fleet, secrets, forge=forge, clock=clock)
         self._forge = self._repos.forge
         self._now = clock or (lambda: datetime.now(UTC))
         self._access: dict[str, Access] | None = None
@@ -132,9 +134,8 @@ class OwnerAdapter:
     def _branches_pruned(self, action: OwnerAction) -> Status:
         remaining: list[str] = []
         for repo in self._fleet.repos:
-            report = self._repos.branch_prune(repo, apply=False)
-            rows = cast(list[dict[str, str]], report["branches"])
-            left = sum(1 for row in rows if row["result"].startswith("would_"))
+            rows = cast(list[dict[str, str]], self._repos.prune_state(repo)["branches"])
+            left = sum(1 for row in rows if row["result"] in maintenance.PRUNE_PENDING)
             if left:
                 remaining.append(f"{repo.split('/')[-1]}: {left}")
         if not remaining:

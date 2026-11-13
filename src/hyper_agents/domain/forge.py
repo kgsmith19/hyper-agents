@@ -29,6 +29,7 @@ class Change:
     conflicted: bool = False
     behind: bool = False
     labels: tuple[str, ...] = field(default_factory=tuple)
+    base_ref: str = ""
 
 
 @dataclass(frozen=True)

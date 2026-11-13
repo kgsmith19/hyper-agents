@@ -8,7 +8,7 @@ import pytest
 
 from hyper_agents.adapters.fake_forge import FakeForge
 from hyper_agents.adapters.forge_github import GithubForge
-from hyper_agents.application.repo_maintenance import branch_prune
+from hyper_agents.application.repo_maintenance import PruneFailed, branch_prune
 from hyper_agents.domain.forge import Access, Change, LedgerBranch
 from hyper_agents.ops.__main__ import MAINTAIN_OPS
 from hyper_agents.ops.fleet import RepoAdapter, load_branch_ledger, load_fleet
@@ -65,6 +65,38 @@ def test_a_branch_with_an_open_change_is_never_deleted() -> None:
     forge = FakeForge(branches={"live": A}, open=[Change(number=7, body="", head_ref="live")])
     report = branch_prune(forge, REPO, (LedgerBranch("live", A),), apply=True)
     assert results(report) == {"live": "open_change"} and forge.branches == {"live": A}
+
+
+def test_a_branch_that_is_the_base_of_an_open_change_is_never_deleted() -> None:
+    forge = FakeForge(
+        branches={"stack": A}, open=[Change(number=8, body="", head_ref="top", base_ref="stack")]
+    )
+    report = branch_prune(forge, REPO, (LedgerBranch("stack", A),), apply=True)
+    assert results(report) == {"stack": "open_change"} and forge.branches == {"stack": A}
+
+
+def test_a_refused_delete_fails_red_but_keeps_every_row_and_finishes_the_rest() -> None:
+    forge = FakeForge(branches={"ruled": A, "fine": B}, refused={"ruled"})
+    ledger = (LedgerBranch("ruled", A), LedgerBranch("fine", B))
+    with pytest.raises(PruneFailed) as caught:
+        branch_prune(forge, REPO, ledger, apply=True)
+    report = json.loads(str(caught.value))
+    assert results(report) == {"ruled": "failed", "fine": "deleted"}
+    assert "still present" in report["branches"][0]["detail"]
+    assert forge.branches == {"ruled": A}
+
+
+def test_a_read_error_on_one_branch_never_stops_the_others() -> None:
+    class Flaky(FakeForge):
+        def branch_head(self, repo: str, branch: str) -> str | None:
+            if branch == "flaky":
+                raise RuntimeError("HTTP 500")
+            return super().branch_head(repo, branch)
+
+    forge = Flaky(branches={"flaky": A, "ok": B})
+    with pytest.raises(PruneFailed) as caught:
+        branch_prune(forge, REPO, (LedgerBranch("flaky", A), LedgerBranch("ok", B)), apply=True)
+    assert results(json.loads(str(caught.value))) == {"flaky": "failed", "ok": "deleted"}
 
 
 def test_without_ref_write_it_is_blocked_and_writes_nothing() -> None:
@@ -172,6 +204,7 @@ def test_github_reads_exact_refs_and_maps_permission_errors() -> None:
             ),
             ("DELETE", f"{base}/refs/heads/denied"): (403, {"message": "no"}),
             ("DELETE", f"{base}/refs/heads/already"): (422, {"message": "missing"}),
+            ("DELETE", f"{base}/refs/heads/raced"): (404, {"message": "Not Found"}),
             ("POST", f"{base}/refs"): (403, {"message": "no"}),
         }
     )
@@ -181,6 +214,19 @@ def test_github_reads_exact_refs_and_maps_permission_errors() -> None:
     with pytest.raises(PermissionError):
         adapter.delete_branch(REPO, "denied")
     adapter.delete_branch(REPO, "already")  # 422 is left to the read-back
+    adapter.delete_branch(REPO, "raced")  # 404 (deleted concurrently) is not a credential issue
     with pytest.raises(PermissionError):
         adapter.create_tag(REPO, "archive/y", A)
     assert ("DELETE", f"{base}/refs/heads/denied", None) in calls
+
+
+def test_open_change_refs_pages_the_listing_and_includes_bases() -> None:
+    pulls = f"/repos/{REPO}/pulls?state=open&per_page=100"
+    page1 = [{"head": {"ref": f"h{n}"}, "base": {"ref": "main"}} for n in range(100)]
+    page2 = [{"head": {"ref": "top"}, "base": {"ref": "stack"}}]
+    adapter, calls = _github(
+        {("GET", f"{pulls}&page=1"): (200, page1), ("GET", f"{pulls}&page=2"): (200, page2)}
+    )
+    refs = adapter.open_change_refs(REPO)
+    assert {"h0", "h99", "top", "stack", "main"} <= refs
+    assert [c[1] for c in calls] == [f"{pulls}&page=1", f"{pulls}&page=2"]  # no per-change reads
