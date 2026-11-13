@@ -6,6 +6,8 @@ checks. `dev` and `staging` are empty.
 
 ## Rules for agents
 
+- **One project for everything** (owner decision 2026-11-13; display name to become `central-vault`). Agents use CLI tools and third-party credentials from it. **No GitHub Apps.** Retired tools keep one CLI credential under `/retired/<tool>/`.
+
 - Read a secret only through a path listed here, with the identity listed for it.
 - Never print, log, or commit a value. Compare values by hash if you must.
 - Prefer `/providers/<provider>/` for new code. The old per-app paths still work while consumers
@@ -30,6 +32,10 @@ checks. `dev` and `staging` are empty.
 | `/github/`, `/ssh/`, `/tailscale/`, `/deploy/`, `/config/` | empty, reserved for the migration | none yet |
 
 ## Known problems (owner)
+
+- **2026-11-13 audit:** see [`infisical-audit-2026-11-13.md`](infisical-audit-2026-11-13.md). The per-secret catalog is in the Operations Registry. Most urgent:
+  - `/ops/GITHUB_OPS_PAT` expires 2026-11-13 06:29 UTC and can't read admin settings. Regenerate it via #58 step 1.
+  - The `ai-coding-harness` identity holds the project **admin** role. Split it per workload.
 
 - Dead: `/platform/llm-handler/LLM_KEYS_GOOGLE` (401, intentionally unread by code), `/SUPABASE_ACCESS_TOKEN` (401). Pending deletion.
 - Restricted (403): `/review/REVIEW_GOOGLE_API_KEY`, `/OPENAI_USAGE_API_KEY`.
