@@ -35,6 +35,7 @@ Transport = Callable[
     tuple[int, bytes] | tuple[int, bytes, dict[str, str]],
 ]
 EXPIRY_HEADER = "github-authentication-token-expiration"
+_MAX_PAGES = 50
 
 
 def _urllib_transport(
@@ -199,11 +200,8 @@ class GithubForge:
 
     def upsert_note(self, repo: str, number: int, marker: str, text: str) -> None:
         base = f"/repos/{self._repo(repo)}/issues"
-        comments = cast(
-            list[dict[str, Any]], self._call("GET", f"{base}/{number}/comments?per_page=100") or []
-        )
         body = f"{marker}\n{text}"
-        for comment in comments:
+        for comment in self._comments(repo, number):
             if str(comment.get("body") or "").startswith(marker):
                 if comment.get("body") != body:
                     self._call("PATCH", f"{base}/comments/{comment['id']}", {"body": body})
@@ -244,7 +242,9 @@ class GithubForge:
         items_writable = False
         if newest:
             status, _ = self._status_call(
-                "POST", f"/repos/{repo}/issues/{newest[0]['number']}/labels", {"labels": []}
+                "POST",
+                f"/repos/{self._repo(repo)}/issues/{newest[0]['number']}/labels",
+                {"labels": []},
             )
             items_writable = status < 400
         return Access(settings_readable, items_writable, expires)
@@ -283,12 +283,20 @@ class GithubForge:
         return number
 
     def note_exists(self, repo: str, number: int, marker: str) -> bool:
-        comments = cast(
-            list[dict[str, Any]],
-            self._call("GET", f"/repos/{self._repo(repo)}/issues/{number}/comments?per_page=100")
-            or [],
+        return any(
+            str(c.get("body") or "").startswith(marker) for c in self._comments(repo, number)
         )
-        return any(str(c.get("body") or "").startswith(marker) for c in comments)
+
+    def _comments(self, repo: str, number: int) -> list[dict[str, Any]]:
+        """Every comment on an item, across pages, so marker dedupe holds past 100 comments."""
+        base = f"/repos/{self._repo(repo)}/issues/{number}/comments?per_page=100"
+        comments: list[dict[str, Any]] = []
+        for page in range(1, _MAX_PAGES + 1):
+            found = cast(list[dict[str, Any]], self._call("GET", f"{base}&page={page}") or [])
+            comments.extend(found)
+            if len(found) < 100:
+                return comments
+        raise RuntimeError(f"more than {_MAX_PAGES * 100} comments on item {number}")
 
     def dispatch(self, repo: str, workflow: str, ref: str, inputs: dict[str, str]) -> None:
         self._call(

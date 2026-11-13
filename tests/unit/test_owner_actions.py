@@ -56,7 +56,8 @@ def test_a_regression_reopens_and_a_broken_check_never_reads_as_done() -> None:
     actions_status(forge, TRACKER, (A,), {"check_a": done}, now=NOW, apply=True)
     report = actions_status(forge, TRACKER, (A,), {"check_a": broken}, now=NOW, apply=True)
     assert report["pending"] == ["a"]
-    assert "check failed: RuntimeError: vault unreachable" in forge.tracked[MARKER][2]
+    assert "check failed: RuntimeError" in forge.tracked[MARKER][2]
+    assert "vault unreachable" not in forge.tracked[MARKER][2]  # no raw error text in the Item
     assert forge.tracked[MARKER][3] is True
     unknown = actions_status(forge, TRACKER, (A,), {}, now=NOW, apply=False)
     assert unknown["pending"] == ["a"]
@@ -244,3 +245,25 @@ def test_github_ensure_item_rewrites_the_marked_item_in_place() -> None:
         f"/repos/{repo}/issues/58",
         {"body": f"{MARKER}\nnew", "state": "closed", "state_reason": "completed"},
     )
+
+
+def test_github_note_dedupe_reads_every_page_of_comments() -> None:
+    repo = TRACKER
+    marker = "<!-- hyper-agents:owner-actions:reminder:2026-W46 -->"
+    pages = {
+        1: [{"id": n, "body": "noise"} for n in range(100)],
+        2: [{"id": 999, "body": f"{marker}\nhi"}],
+    }
+    calls: list[Any] = []
+
+    def transport(
+        method: str, url: str, headers: dict[str, str], body: bytes | None
+    ) -> tuple[int, bytes]:
+        calls.append((method, url))
+        page = int(url.split("page=")[-1]) if "page=" in url else 1
+        return 200, json.dumps(pages.get(page, [])).encode()
+
+    adapter = GithubForge(token=lambda: "tok", transport=transport)
+    assert adapter.note_exists(repo, 58, marker) is True
+    adapter.upsert_note(repo, 58, marker, "hi")
+    assert all(method == "GET" for method, _ in calls)  # found on page 2: nothing posted

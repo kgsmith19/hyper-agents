@@ -40,7 +40,8 @@ def run_checks(actions: tuple[OwnerAction, ...], checks: Mapping[str, Check]) ->
         try:
             statuses[action.id] = check(action)
         except Exception as error:  # a broken check must never read as done
-            statuses[action.id] = Status(False, f"check failed: {type(error).__name__}: {error}")
+            # Only the error type reaches the Item: a message could carry provider detail.
+            statuses[action.id] = Status(False, f"check failed: {type(error).__name__}")
     return statuses
 
 

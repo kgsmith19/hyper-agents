@@ -13,7 +13,8 @@ actions:
     title: "Ops token: about 2 minutes, once a year"
     why: >-
       Maintenance needs it to close Issues after merges and to read and enforce repository
-      settings in every fleet repository.
+      settings in every fleet repository. Administration write is for settings apply; secrets,
+      variables and actions write are for the Ops broker's R1/R2 ops, each still gated.
     check: forge_access
     steps:
       - >-
@@ -22,7 +23,10 @@ actions:
       - >-
         In **Resource owner**, pick another owner and then `kgsmith19` again (a GitHub bug
         means the pre-fill does not stick otherwise).
-      - Under **Repository access** choose **All repositories**, click **Generate token** and copy it.
+      - >-
+        Under **Repository access** choose **Only select repositories** and pick the four fleet
+        repositories (agent-engineering-standard, agent-extensions, hyperbolic-core,
+        hyper-agents). Click **Generate token** and copy it.
       - In Infisical (ops project, environment `prod`, folder `/ops`) set **`GITHUB_OPS_PAT`** to it and save.
       - Nothing else. The next maintenance run (within 30 minutes) ticks this off.
 
