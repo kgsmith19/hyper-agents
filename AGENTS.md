@@ -30,5 +30,7 @@ uv run pytest                             # unit, integration, security, conform
 - **Secrets:** never in the repository, YAML, logs, images or Issues. Local `.env` files are gitignored.
 - **Tests:** red before green. Each test must be able to fail; include a negative control when adding a
   rule.
-- **PRs:** one per Issue, ready (not draft), `Closes #N`. The single required check is `PR Gate`. The
-  owner merges; an agent never merges and never bypasses the gate.
+- **PRs:** one per Issue, ready (not draft), `Closes #N`. The single required check is `PR Gate`. An
+  agent merges its own PR (squash, with the exact head SHA as a lease) once `PR Gate` is green at that
+  head and an independent review is clean. Nobody bypasses the gate. After a merge, restart the branch
+  from `main` (#61).
