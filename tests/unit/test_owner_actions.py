@@ -325,3 +325,24 @@ def test_github_access_probe_reads_422_as_writable_and_403_as_not() -> None:
             }
         )
         assert adapter.access(repo).items_writable is writable, status
+
+
+def test_check_failure_shows_http_status_and_path_template_never_ids_or_query() -> None:
+    import urllib.error
+    from email.message import Message
+
+    from hyper_agents.application.owner_actions import describe_failure
+
+    error = urllib.error.HTTPError(
+        "https://app.infisical.com/api/v1/projects/813dda9e-a986-4448-aa6f-f46e0365deca"
+        "/memberships/identities/3801b514-b70d-45cb-99d2-221f9a9ceb2c/secret-folder-access?x=s3cret",
+        404,
+        "Not Found: provider detail",
+        Message(),
+        None,
+    )
+    shown = describe_failure(error)
+    assert shown == (
+        "HTTPError 404 at /api/v1/projects/{id}/memberships/identities/{id}/secret-folder-access"
+    )
+    assert describe_failure(LookupError("token value here")) == "LookupError"

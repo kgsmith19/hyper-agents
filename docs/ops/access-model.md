@@ -61,12 +61,15 @@ Kyle's own org-admin login can reassign any role. No agent identity can grant ad
 
 Still open:
 - Coding sessions use `ai-coding-harness` universal auth, so after this change they get `member`.
-- The five per-service deploy identities stay `viewer` at the project level, but #86 overlays a
-  permanent native `List` grant on the exact `/platform/lifeos-signing` folder for every workload
-  except `ai-coding-harness`, the controller-token broker. Infisical folder access overrides the
-  broader project role at that folder: names and metadata remain visible, the private-key value does
-  not. The R0 check is `infisical.signing_folder.report`; drift resolves through the R2
-  `infisical.signing_folder.restrict` op in `ops-r2`.
+- The five per-service deploy identities stay `viewer` at the project level. #86/#88 give every
+  workload except `ai-coding-harness` (the controller-token broker) one permanent identity
+  additional privilege, slug `lifeos-signing-deny`, whose inverted rules forbid `readValue` on
+  `prod` at `/platform/lifeos-signing` and below. Infisical permissions are additive, so only a
+  forbid rule can narrow a broader role (an extra "List" grant cannot). Names and metadata remain
+  visible; the private-key value does not. The R0 check is `infisical.signing_folder.report`;
+  drift resolves through the R2 `infisical.signing_folder.restrict` op in `ops-r2`.
+  Rollback: delete the `lifeos-signing-deny` privilege
+  (`DELETE /api/v2/identity-project-additional-privilege/{id}`).
 
 ## Signing-folder boundary (#86)
 
