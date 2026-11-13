@@ -20,7 +20,7 @@ env:
   UV_VERSION: "0.11.32"
   # Not secrets: the Infisical project and the *viewer* identity dev-agent, whose OIDC
   # subject trusts this repo's main branch. Maintenance only reads secrets, so it never
-  # holds the admin identity the Ops broker's apply jobs use (MB-009, docs/ops/access-model.md).
+  # holds the broker identity the Ops broker's apply jobs use (MB-009, docs/ops/access-model.md).
   INFISICAL_PROJECT_ID: 246790d5-245f-4f4a-a730-5dda5e882b05
   INFISICAL_OPS_IDENTITY_ID: 3801b514-b70d-45cb-99d2-221f9a9ceb2c
 

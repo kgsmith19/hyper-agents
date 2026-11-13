@@ -34,15 +34,32 @@ narrows roles rather than adding identities.
 in all 4 repositories". **Rollback:** revert the one-line `INFISICAL_OPS_IDENTITY_ID` change
 in `maintain.yml`.
 
-## Remaining (MB-009)
+## Automated enforcement (MB-009)
 
-1. Create a custom project role `ops-broker`: write on `/ops` and `/agents`, read on
-   `/providers`. Assign it to `ai-coding-harness` in place of `admin`. This is a project-admin
-   change, and this session's policy refuses secret-store and role writes. It needs Kyle, or a
-   one-time allow rule, under the ManualBlocker contract.
-2. Verify `ops.yml` R0, R1 and R2 runs on the narrowed role, including `github.secret.set` from
-   `/ops`.
-3. Move coding-agent sessions to a read-only credential (`viewer`) once every write they make
-   goes through the broker.
-4. Consolidate the five per-service deploy identities if the plan limit is to be met. Until
-   then, add folder-scoped privileges to each.
+No workload identity may hold the project `admin` role. Owner action
+`least-privilege-identities` checks this on every maintenance run, through
+`InfisicalAdapter.identity_roles()`. For each admin it finds, its resolver dispatches
+`infisical.identity.set_role`:
+
+- The op is R2 and runs in `ops-r2` with no reviewer.
+- It replaces that identity's roles with the built-in `member` role, then reads the role back.
+- It never grants `admin`, whatever the params say.
+- `member` can still read and write secrets, so the broker's R1/R2 ops keep working.
+- Custom roles are not used: the plan's roles endpoint returned 404.
+
+The op only ever *removes* admin. It refuses a target that does not hold admin now, so it cannot lock
+out an ordinary identity.
+
+**This is one-shot by design.** The broker identity demotes itself. After that, no agent identity can
+edit roles. A later admin grant is still **detected** on every run, but the automated fix fails
+(HTTP 403) twice and then hands the one UI step to Kyle. That is the intended end state: no workload
+can grant or remove admin. When the broker demotes itself, the read-back may lose permission. The op
+then reports `unverified`, and the next maintenance check (run as `dev-agent`) confirms the result.
+
+If the fix fails twice in a week, the owner checklist shows the one UI step. **Break-glass:**
+Kyle's own org-admin login can reassign any role. No agent identity can grant admin.
+
+Still open:
+- Coding sessions use `ai-coding-harness` universal auth, so after this change they get `member`.
+- The five per-service deploy identities stay `viewer`, which is project-wide. Folder-scoped
+  privileges are the next step.

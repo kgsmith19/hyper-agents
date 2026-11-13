@@ -42,6 +42,8 @@ them. Secret values are never parameters. Secrets are referenced by Infisical pa
 | `vendor.key.validate` | R0 | One `GET /v1/models` to a fixed OpenAI or Anthropic host; status, validity and fingerprint only |
 | `cli.run` | R0 | One argv from `CLI_ALLOWLIST` in `adapters.py`; params name a key, never argv |
 | `github.variable.set`, `github.variable.delete` | R1 | Non-secret configuration |
+| `infisical.access.report` | R0 | Machine identities with their role slugs (names and ids only) |
+| `infisical.identity.set_role` | R2 | Set one identity to a built-in non-admin role (`member`, `viewer`, `no-access`), then read it back; admin is refused |
 | `repo.report`, `repo.settings_drift` | R0 | Fleet maintenance reads (`ops/fleet.yaml`) |
 | `repo.close_sweep`, `repo.change_health` | R1 | Close Items named by merged changes; flag conflicted changes |
 | `repo.branch_prune` | R1 | Delete `ops/branch_ledger.yaml` branches, each only while its head equals the recorded SHA (tag `archive/<branch>` first where listed); never the default branch or one an open change uses; `blocked` without Contents write |

@@ -22,6 +22,26 @@ ops:
       - name: source_path
         pattern: '^/[A-Za-z0-9_./-]{0,128}$'
 
+  # Identity governance (MB-009). R0 report reads names, ids and role slugs only. The R2 op
+  # replaces one identity's roles with a single built-in non-admin role and reads it back;
+  # the adapter refuses admin whatever the params say.
+  - id: infisical.access.report
+    adapter: infisical
+    action: access_report
+    tier: R0
+    params: []
+
+  - id: infisical.identity.set_role
+    adapter: infisical
+    action: set_identity_role
+    tier: R2
+    gate: ops-r2
+    params:
+      - name: identity
+        pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+      - name: role
+        enum: [member, viewer, no-access]
+
   - id: github.secret.list
     adapter: github
     action: list_secrets
