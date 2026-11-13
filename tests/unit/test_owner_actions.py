@@ -130,6 +130,14 @@ class Vault:
     def identity_roles(self) -> list[dict[str, object]]:
         return []  # no workload identity holds admin
 
+    def signing_folder_access_report(self) -> dict[str, object]:
+        return {
+            "path": "/platform/lifeos-signing",
+            "broker": "ai-coding-harness",
+            "protected": [],
+            "drift": [],
+        }
+
     def get(self, path: str, name: str) -> str:
         if (path, name) not in self.held:
             raise LookupError(f"{name} not found at {path}")

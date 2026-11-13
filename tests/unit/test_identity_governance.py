@@ -19,6 +19,9 @@ from hyper_agents.ops.registry import load_registry
 ROOT = Path(__file__).resolve().parents[2]
 ADMIN = "813dda9e-a986-4448-aa6f-f46e0365deca"
 VIEWER = "3801b514-b70d-45cb-99d2-221f9a9ceb2c"
+DEPLOY = "00000000-0000-4000-8000-000000000003"
+BROKER = ADMIN
+SIGNING_PATH = "/platform/lifeos-signing"
 
 
 class Server:
@@ -157,3 +160,155 @@ def test_the_check_turns_each_admin_into_one_resolver_fix_and_maintain_dispatche
         "mode": "apply",
     } in dispatched
     assert "least-privilege-identities" in report["pending"]  # watch, not done, until read back
+
+
+class FolderServer(Server):
+    """Fake native folder-access API. It carries metadata only, never a secret value."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.roles = {
+            BROKER: [{"role": "member"}],
+            VIEWER: [{"role": "viewer"}],
+            DEPLOY: [{"role": "viewer"}],
+        }
+        self.names = {
+            BROKER: "ai-coding-harness",
+            VIEWER: "dev-agent",
+            DEPLOY: "lifeos-deploy",
+        }
+        self.grants: dict[str, dict[str, Any]] = {
+            DEPLOY: {
+                "id": "10000000-0000-4000-8000-000000000003",
+                "identityId": DEPLOY,
+                "environment": "prod",
+                "secretPath": SIGNING_PATH,
+                "permission": "read",
+                "isTemporary": False,
+            }
+        }
+
+    def __call__(
+        self, method: str, url: str, token: str, body: Mapping[str, Any] | None
+    ) -> dict[str, Any]:
+        self.calls.append((method, url, body))
+        clean = url.split("?", 1)[0]
+        if clean.endswith("/identity-memberships"):
+            return {
+                "totalCount": len(self.roles),
+                "identityMemberships": [
+                    {
+                        "identityId": identity,
+                        "identity": {"id": identity, "name": self.names[identity]},
+                        "roles": roles,
+                    }
+                    for identity, roles in self.roles.items()
+                ],
+            }
+        if "/secret-folder-access" in clean:
+            identity = clean.split("/memberships/identities/", 1)[1].split("/", 1)[0]
+            if method == "GET":
+                grant = self.grants.get(identity)
+                return {"folderAccess": [grant] if grant else []}
+            assert body is not None
+            current = self.grants.get(identity)
+            grant_id = (current or {}).get("id", f"20000000-0000-4000-8000-{identity[-12:]}")
+            self.grants[identity] = {
+                "id": grant_id,
+                "identityId": identity,
+                "environment": body["environmentSlug"],
+                "secretPath": body["secretPath"],
+                "permission": body["permission"],
+                "isTemporary": body.get("type", {}).get("isTemporary", False),
+            }
+            return {"folderAccess": self.grants[identity]}
+        return super().__call__(method, url, token, body)
+
+
+def test_signing_folder_report_flags_missing_or_value_read_access_and_exempts_broker() -> None:
+    result = adapter(FolderServer()).execute("signing_folder_access_report", {})
+    assert result == {
+        "path": SIGNING_PATH,
+        "broker": "ai-coding-harness",
+        "protected": [],
+        "drift": [
+            {"identity": VIEWER, "name": "dev-agent", "permission": "missing"},
+            {"identity": DEPLOY, "name": "lifeos-deploy", "permission": "read"},
+        ],
+    }
+
+
+def test_restrict_signing_folder_creates_updates_and_is_idempotent() -> None:
+    server = FolderServer()
+    infisical = adapter(server)
+    created = infisical.execute(
+        "restrict_signing_folder", {"identity": VIEWER, "permission": "list"}
+    )
+    assert created["action"] == "created"
+    assert created["permission"] == "list" and created["path"] == SIGNING_PATH
+    updated = infisical.execute(
+        "restrict_signing_folder", {"identity": DEPLOY, "permission": "list"}
+    )
+    assert updated["action"] == "updated"
+    unchanged = infisical.execute(
+        "restrict_signing_folder", {"identity": DEPLOY, "permission": "list"}
+    )
+    assert unchanged["action"] == "unchanged"
+    writes = [call for call in server.calls if call[0] in ("POST", "PATCH")]
+    assert [call[0] for call in writes] == ["POST", "PATCH"]
+    assert all(
+        call[2]
+        == {
+            "environmentSlug": "prod",
+            "secretPath": SIGNING_PATH,
+            "permission": "list",
+            "type": {"isTemporary": False},
+        }
+        for call in writes
+    )
+
+
+def test_signing_folder_op_refuses_broker_or_any_role_that_reads_values() -> None:
+    infisical = adapter(FolderServer())
+    with pytest.raises(PermissionError, match="broker"):
+        infisical.execute("restrict_signing_folder", {"identity": BROKER, "permission": "list"})
+    with pytest.raises(ValueError, match="only 'list'"):
+        infisical.execute("restrict_signing_folder", {"identity": VIEWER, "permission": "read"})
+
+
+def test_folder_boundary_is_registered_r0_r2_and_owner_resolves_each_drift() -> None:
+    registry = load_registry(ROOT / "ops/registry.yaml")
+    assert registry["infisical.signing_folder.report"].tier == "R0"
+    op = registry["infisical.signing_folder.restrict"]
+    assert (op.tier, op.gate) == ("R2", "ops-r2")
+    with pytest.raises(OpRefused):
+        run_op(
+            registry,
+            op.id,
+            {"identity": VIEWER, "permission": "read"},
+            mode="dry-run",
+            gate=None,
+            adapters={},
+            actor="t",
+            run_id="r",
+        )
+
+    fleet = load_fleet(ROOT / "ops/fleet.yaml")
+    config = load_owner_actions(ROOT / "ops/owner_actions.yaml", registry)
+    action = next(a for a in config.actions if a.id == "signing-folder-boundary")
+    assert action.resolver is not None and action.resolver.op == op.id
+    fake = FakeForge()
+    owner = OwnerAdapter(fleet, config, adapter(FolderServer()), forge=fake)
+    status = owner._signing_folder_boundary(action)  # pyright: ignore[reportPrivateUsage]
+    assert not status.done
+    assert status.fixes == (
+        (("identity", VIEWER), ("permission", "list")),
+        (("identity", DEPLOY), ("permission", "list")),
+    )
+    owner.execute("status", {})
+    dispatched = [cast(dict[str, str], w[1]) for w in fake.writes if w[0] == "dispatch"]
+    assert {
+        "op": op.id,
+        "params": json.dumps({"identity": VIEWER, "permission": "list"}),
+        "mode": "apply",
+    } in dispatched
