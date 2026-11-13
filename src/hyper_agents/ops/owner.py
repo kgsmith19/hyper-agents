@@ -16,7 +16,8 @@ from hyper_agents.application import owner_actions as tracker
 from hyper_agents.application import repo_maintenance as maintenance
 from hyper_agents.application.ports import ForgePort
 from hyper_agents.domain.forge import Access
-from hyper_agents.domain.owner_actions import OwnerAction, Status
+from hyper_agents.domain.manual_blocker import FailureClass, dedupe
+from hyper_agents.domain.owner_actions import BlockerSpec, OwnerAction, Status, blocker_record
 from hyper_agents.ops.fleet import Fleet, RepoAdapter
 
 
@@ -28,6 +29,33 @@ class TrackerConfig:
     settings_apply_op: str
     expiry_warning_days: int
     actions: tuple[OwnerAction, ...]
+
+
+def _blocker_spec(raw: object) -> BlockerSpec | None:
+    """Parse a ``blocker:`` mapping strictly: every value a non-empty string, ``attempts`` a
+    list of them. Unknown or missing keys fail in the constructor."""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError("blocker must be a mapping")
+    spec = cast(dict[str, Any], raw)
+    attempts = spec.get("attempts")
+    if not isinstance(attempts, list) or not attempts:
+        raise ValueError("blocker.attempts must be a non-empty list")
+    values: dict[str, str] = {}
+    for key, value in [*spec.items(), *(("attempt", a) for a in cast(list[Any], attempts))]:
+        if key == "attempts":
+            continue
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"blocker.{key} must be a non-empty string")
+        if key != "attempt":
+            values[key] = value.strip()
+    failure_class = FailureClass(values.pop("failure_class", ""))
+    return BlockerSpec(
+        attempts=tuple(str(a).strip() for a in cast(list[str], attempts)),
+        failure_class=failure_class,
+        **values,  # pyright: ignore[reportArgumentType]
+    )
 
 
 def load_owner_actions(path: Path) -> TrackerConfig:
@@ -49,8 +77,13 @@ def load_owner_actions(path: Path) -> TrackerConfig:
                 steps=tuple(str(step).strip() for step in entry["steps"]),
                 check=str(entry["check"]),
                 check_params=tuple(sorted((str(k), str(v)) for k, v in params.items())),
+                blocker=_blocker_spec(entry.get("blocker")),
             )
         )
+    # Validate every contract now (a typo fails the load, not a maintenance run) and refuse
+    # two actions that are the same blocker.
+    probe = Status(False, "loaded")
+    dedupe(blocker_record(a, probe, datetime.now(UTC)) for a in actions if a.blocker)
     return TrackerConfig(
         repo=str(head["repo"]),
         broker_workflow=str(head["broker_workflow"]),
