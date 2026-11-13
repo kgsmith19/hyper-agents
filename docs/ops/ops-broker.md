@@ -46,6 +46,7 @@ them. Secret values are never parameters. Secrets are referenced by Infisical pa
 | `infisical.identity.set_role` | R2 | Set one identity to a built-in non-admin role (`member`, `viewer`, `no-access`), then read it back; admin is refused |
 | `repo.report`, `repo.settings_drift` | R0 | Fleet maintenance reads (`ops/fleet.yaml`) |
 | `repo.close_sweep`, `repo.change_health` | R1 | Close Items named by merged changes; flag conflicted changes |
+| `repo.ledger_drift` | R0 | Branches outside `ops/branch_ledger.yaml` that no open change uses (candidates to reconcile); deletes nothing |
 | `repo.branch_prune` | R1 | Delete `ops/branch_ledger.yaml` branches, each only while its head equals the recorded SHA (tag `archive/<branch>` first where listed); never the default branch or one an open change uses; `blocked` without Contents write |
 | `github.secret.set`, `github.secret.delete` | R2 | Runs in the `ops-r2` environment (no reviewer) |
 | `repo.settings_apply` | R2 | Runs in the `ops-r2` environment (no reviewer) |

@@ -104,6 +104,7 @@ MAINTAIN_OPS = (
     "repo.change_health",
     "repo.settings_drift",
     "repo.branch_prune",
+    "repo.ledger_drift",
 )
 
 

@@ -175,6 +175,15 @@ ops:
 
   # R1: lease-checked delete of the branches in ops/branch_ledger.yaml (archive tag first where
   # the ledger says so). Without ref write access it reports `blocked` and writes nothing.
+  # R0: branches outside the ledger with no open change (candidates to reconcile); deletes nothing.
+  - id: repo.ledger_drift
+    adapter: repo
+    action: ledger_drift
+    tier: R0
+    params:
+      - name: repo
+        enum: [kgsmith19/agent-engineering-standard, kgsmith19/agent-extensions, kgsmith19/hyper-agents, kgsmith19/hyperbolic-core]
+
   - id: repo.branch_prune
     adapter: repo
     action: branch_prune

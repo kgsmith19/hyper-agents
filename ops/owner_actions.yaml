@@ -120,12 +120,12 @@ actions:
       - Nothing else. The next maintenance run retries and ticks this off.
 
   - id: branch-prune
-    title: "Stale branches: one permission edit (or one script run)"
+    title: "Stale branches pruned automatically"
     why: >-
       Reconciled branches (ops/branch_ledger.yaml) pile up and hide the active ones.
       Maintenance deletes each one only while its head is still the recorded SHA, tagging
-      superseded work archive/<branch> first. Deleting a branch needs Contents write on the
-      ops token, which it does not have yet.
+      superseded work archive/<branch> first. The ops token has Contents write (owner
+      upgrade, 2026-11-13); a new stale branch is pruned once it is added to the ledger.
     check: branches_pruned
     blocker:
       blocker_id: MB-008

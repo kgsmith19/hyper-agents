@@ -154,6 +154,9 @@ class RepoAdapter:
             )
         if action == "change_health":
             return maintenance.change_health(self._forge, repo, apply=True)
+        if action == "ledger_drift":
+            ledger = self._fleet.branch_ledger.get(repo, ())
+            return maintenance.ledger_drift(self._forge, repo, ledger)
         if action == "branch_prune":
             return self.branch_prune(repo, apply=True)
         if action == "settings_apply":

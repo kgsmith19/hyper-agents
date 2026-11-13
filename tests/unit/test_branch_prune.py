@@ -230,3 +230,17 @@ def test_open_change_refs_pages_the_listing_and_includes_bases() -> None:
     refs = adapter.open_change_refs(REPO)
     assert {"h0", "h99", "top", "stack", "main"} <= refs
     assert [c[1] for c in calls] == [f"{pulls}&page=1", f"{pulls}&page=2"]  # no per-change reads
+
+
+def test_ledger_drift_reports_only_unledgered_idle_branches_and_writes_nothing() -> None:
+    from hyper_agents.application.repo_maintenance import ledger_drift
+
+    forge = FakeForge(
+        branches={"main": A, "old": A, "stale": B, "live": C},
+        open=[Change(number=1, body="", head_ref="live", base_ref="main")],
+    )
+    report = ledger_drift(forge, REPO, (LedgerBranch("old", A),))
+    assert report == {"repo": REPO, "unledgered": ["stale"], "count": 1}
+    assert forge.writes == []
+    assert "repo.ledger_drift" in MAINTAIN_OPS
+    assert load_registry(ROOT / "ops/registry.yaml")["repo.ledger_drift"].tier == "R0"
