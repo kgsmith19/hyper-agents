@@ -12,6 +12,7 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping
+from datetime import UTC, datetime
 from typing import Any, cast
 from urllib.parse import quote
 
@@ -140,47 +141,96 @@ class InfisicalAdapter:
                 return str(item["secretValue"])
         raise LookupError(f"{name} not found at {path}")
 
+    def _memberships_url(self) -> str:
+        return f"{INFISICAL_API}/v1/projects/{quote(self._project_id)}/identity-memberships"
+
+    @staticmethod
+    def _active_roles(raw: list[dict[str, Any]], now: datetime) -> list[str]:
+        """Role slugs in force now: permanent ones, and temporary ones not yet expired."""
+        roles: list[str] = []
+        for role in raw:
+            if role.get("isTemporary"):
+                end = role.get("temporaryAccessEndTime")
+                if not end or datetime.fromisoformat(str(end).replace("Z", "+00:00")) <= now:
+                    continue
+            roles.append(str(role.get("role")))
+        return sorted(roles)
+
     def identity_roles(self) -> list[dict[str, Any]]:
-        """Every machine identity in the project with its role slugs. Names and ids only."""
-        url = f"{INFISICAL_API}/v1/projects/{quote(self._project_id)}/identity-memberships"
-        found = self._send("GET", url, self._access_token(), None)
+        """Every machine identity in the project with its active role slugs, across all
+        pages. Names and ids only; memberships without an id are skipped."""
         rows: list[dict[str, Any]] = []
-        for membership in cast(list[dict[str, Any]], found.get("identityMemberships") or []):
-            identity = cast(dict[str, Any], membership.get("identity") or {})
-            roles = cast(list[dict[str, Any]], membership.get("roles") or [])
-            rows.append(
-                {
-                    "id": str(membership.get("identityId") or identity.get("id")),
-                    "name": str(identity.get("name") or ""),
-                    "roles": sorted(str(r.get("role")) for r in roles),
-                }
+        now = datetime.now(UTC)
+        limit, offset = 1000, 0
+        while True:
+            page = self._send(
+                "GET",
+                f"{self._memberships_url()}?limit={limit}&offset={offset}",
+                self._access_token(),
+                None,
             )
+            found = cast(list[dict[str, Any]], page.get("identityMemberships") or [])
+            for membership in found:
+                identity = cast(dict[str, Any], membership.get("identity") or {})
+                identity_id = membership.get("identityId") or identity.get("id")
+                if not identity_id:
+                    continue
+                roles = cast(list[dict[str, Any]], membership.get("roles") or [])
+                rows.append(
+                    {
+                        "id": str(identity_id),
+                        "name": str(identity.get("name") or ""),
+                        "roles": self._active_roles(roles, now),
+                    }
+                )
+            offset += len(found)
+            total = int(page.get("totalCount") or 0)
+            if len(found) < limit or (total and offset >= total):
+                break
         return sorted(rows, key=lambda row: row["name"])
 
+    def _membership_roles(self, identity: str) -> list[str]:
+        try:
+            found = self._send(
+                "GET", f"{self._memberships_url()}/{quote(identity)}", self._access_token(), None
+            )
+        except urllib.error.HTTPError as error:
+            if error.code == 404:
+                raise LookupError(f"identity {identity} is not a member of this project") from None
+            raise
+        membership = cast(dict[str, Any], found.get("identityMembership") or {})
+        return self._active_roles(
+            cast(list[dict[str, Any]], membership.get("roles") or []), datetime.now(UTC)
+        )
+
     def set_identity_role(self, identity: str, role: str) -> dict[str, Any]:
-        """Replace an identity's project roles with one built-in, non-admin role, then read
-        the membership back. Refuses ``admin`` and anything not in ``ASSIGNABLE_ROLES``."""
+        """Demote one *admin* identity to a single built-in non-admin role. Refuses admin as
+        the target role and refuses any identity that does not hold admin now, so the op can
+        only remove admin, never lock out an ordinary identity.
+
+        The broker may be demoting itself: once the PATCH lands it may no longer read
+        memberships, so a 401/403 on the read-back reports ``unverified`` and the next
+        maintenance check (a separate identity) confirms the result."""
         if role not in ASSIGNABLE_ROLES:
             raise ValueError(f"refusing role {role!r}; assignable: {list(ASSIGNABLE_ROLES)}")
-        before = {row["id"]: row for row in self.identity_roles()}
-        if identity not in before:
-            raise LookupError(f"identity {identity} is not a member of this project")
-        url = (
-            f"{INFISICAL_API}/v1/projects/{quote(self._project_id)}"
-            f"/identity-memberships/{quote(identity)}"
-        )
+        before = self._membership_roles(identity)
+        if "admin" not in before:
+            raise PermissionError(f"refusing: {identity} does not hold admin (roles {before})")
         self._send(
-            "PATCH", url, self._access_token(), {"roles": [{"role": role, "isTemporary": False}]}
+            "PATCH",
+            f"{self._memberships_url()}/{quote(identity)}",
+            self._access_token(),
+            {"roles": [{"role": role, "isTemporary": False}]},
         )
-        after = {row["id"]: row for row in self.identity_roles()}.get(identity, {})
-        if after.get("roles") != [role]:
-            raise RuntimeError(f"read-back shows roles {after.get('roles')} for {identity}")
-        return {
-            "identity": identity,
-            "name": before[identity]["name"],
-            "before": before[identity]["roles"],
-            "after": after["roles"],
-        }
+        try:
+            after = self._membership_roles(identity)
+        except urllib.error.HTTPError as error:
+            if error.code not in (401, 403):
+                raise
+            return {"identity": identity, "before": before, "after": "unverified (lost read)"}
+        if after != [role]:
+            raise RuntimeError(f"read-back shows roles {after} for {identity}")
+        return {"identity": identity, "before": before, "after": after}
 
     def execute(self, action: str, params: Mapping[str, str]) -> dict[str, Any]:
         if action == "access_report":

@@ -47,6 +47,15 @@ No workload identity may hold the project `admin` role. Owner action
 - `member` can still read and write secrets, so the broker's R1/R2 ops keep working.
 - Custom roles are not used: the plan's roles endpoint returned 404.
 
+The op only ever *removes* admin. It refuses a target that does not hold admin now, so it cannot lock
+out an ordinary identity.
+
+**This is one-shot by design.** The broker identity demotes itself. After that, no agent identity can
+edit roles. A later admin grant is still **detected** on every run, but the automated fix fails
+(HTTP 403) twice and then hands the one UI step to Kyle. That is the intended end state: no workload
+can grant or remove admin. When the broker demotes itself, the read-back may lose permission. The op
+then reports `unverified`, and the next maintenance check (run as `dev-agent`) confirms the result.
+
 If the fix fails twice in a week, the owner checklist shows the one UI step. **Break-glass:**
 Kyle's own org-admin login can reassign any role. No agent identity can grant admin.
 

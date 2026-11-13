@@ -24,6 +24,7 @@ from hyper_agents.domain.owner_actions import (
     Status,
     blocker_record,
 )
+from hyper_agents.ops.adapters import ASSIGNABLE_ROLES
 from hyper_agents.ops.fleet import Fleet, RepoAdapter
 
 
@@ -221,6 +222,8 @@ class OwnerAdapter:
         """No workload identity may hold the project admin role. Each admin found becomes one
         fix (identity, replacement role) for the action's resolver op."""
         replacement = dict(action.check_params).get("replacement", "member")
+        if replacement not in ASSIGNABLE_ROLES:  # a config typo must not spend attempts
+            raise ValueError(f"replacement {replacement!r} is not an assignable role")
         rows = cast(list[dict[str, Any]], self._secrets.identity_roles())
         admins = [row for row in rows if "admin" in row["roles"]]
         if not admins:

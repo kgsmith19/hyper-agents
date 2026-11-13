@@ -1,7 +1,9 @@
 """Infisical identity governance (MB-009): report roles, never grant admin, fix by resolver."""
 
 import json
+import urllib.error
 from collections.abc import Mapping
+from email.message import Message
 from pathlib import Path
 from typing import Any, cast
 
@@ -20,32 +22,42 @@ VIEWER = "3801b514-b70d-45cb-99d2-221f9a9ceb2c"
 
 
 class Server:
-    """Fake Infisical identity-membership API that applies PATCHes."""
+    """Fake Infisical identity-membership API: paged list, single read, PATCH."""
 
-    def __init__(self, ignore_patch: bool = False) -> None:
-        self.roles = {ADMIN: ["admin"], VIEWER: ["viewer"]}
+    def __init__(self, ignore_patch: bool = False, lose_read_on_patch: bool = False) -> None:
+        self.roles: dict[str, list[dict[str, Any]]] = {
+            ADMIN: [{"role": "admin"}],
+            VIEWER: [{"role": "viewer"}],
+        }
         self.names = {ADMIN: "ai-coding-harness", VIEWER: "dev-agent"}
         self.ignore_patch = ignore_patch
+        self.lose_read_on_patch = lose_read_on_patch
+        self.patched = False
         self.calls: list[tuple[str, str, Any]] = []
 
     def __call__(
         self, method: str, url: str, token: str, body: Mapping[str, Any] | None
     ) -> dict[str, Any]:
         self.calls.append((method, url, body))
+        path = url.split("?")[0]
+        tail = path.rsplit("/", 1)[1]
         if method == "PATCH":
-            identity = url.rsplit("/", 1)[1]
+            self.patched = True
             if not self.ignore_patch:
-                self.roles[identity] = [r["role"] for r in cast(Any, body)["roles"]]
+                self.roles[tail] = [{"role": r["role"]} for r in cast(Any, body)["roles"]]
             return {}
+        if tail != "identity-memberships":  # single membership read
+            if self.lose_read_on_patch and self.patched:
+                raise urllib.error.HTTPError(url, 403, "forbidden", Message(), None)
+            if tail not in self.roles:
+                raise urllib.error.HTTPError(url, 404, "not found", Message(), None)
+            return {"identityMembership": {"identityId": tail, "roles": self.roles[tail]}}
         return {
+            "totalCount": len(self.roles),
             "identityMemberships": [
-                {
-                    "identityId": i,
-                    "identity": {"id": i, "name": self.names[i]},
-                    "roles": [{"role": r} for r in roles],
-                }
+                {"identityId": i, "identity": {"id": i, "name": self.names[i]}, "roles": roles}
                 for i, roles in self.roles.items()
-            ]
+            ],
         }
 
 
@@ -64,15 +76,10 @@ def test_report_lists_names_ids_and_roles_and_flags_admins() -> None:
     }
 
 
-def test_set_role_patches_one_builtin_role_and_reads_it_back() -> None:
+def test_set_role_demotes_an_admin_to_one_builtin_role_and_reads_it_back() -> None:
     server = Server()
     result = adapter(server).execute("set_identity_role", {"identity": ADMIN, "role": "member"})
-    assert result == {
-        "identity": ADMIN,
-        "name": "ai-coding-harness",
-        "before": ["admin"],
-        "after": ["member"],
-    }
+    assert result == {"identity": ADMIN, "before": ["admin"], "after": ["member"]}
     patch = [c for c in server.calls if c[0] == "PATCH"]
     assert patch == [
         (
@@ -83,15 +90,32 @@ def test_set_role_patches_one_builtin_role_and_reads_it_back() -> None:
     ]
 
 
-def test_admin_is_never_granted_and_a_silent_failure_is_caught() -> None:
+def test_it_only_ever_removes_admin_and_never_grants_it() -> None:
     server = Server()
     with pytest.raises(ValueError, match="refusing role 'admin'"):
-        adapter(server).set_identity_role(VIEWER, "admin")
+        adapter(server).set_identity_role(ADMIN, "admin")
+    with pytest.raises(PermissionError, match="does not hold admin"):
+        adapter(server).set_identity_role(VIEWER, "no-access")  # cannot lock out a viewer
     assert not [c for c in server.calls if c[0] == "PATCH"]
-    with pytest.raises(RuntimeError, match="read-back"):
-        adapter(Server(ignore_patch=True)).set_identity_role(ADMIN, "member")
     with pytest.raises(LookupError):
         adapter(Server()).set_identity_role("00000000-0000-0000-0000-000000000000", "member")
+
+
+def test_a_silent_failure_is_caught_but_a_self_demotion_that_loses_read_is_unverified() -> None:
+    with pytest.raises(RuntimeError, match="read-back"):
+        adapter(Server(ignore_patch=True)).set_identity_role(ADMIN, "member")
+    result = adapter(Server(lose_read_on_patch=True)).set_identity_role(ADMIN, "member")
+    assert result["after"] == "unverified (lost read)"
+
+
+def test_expired_temporary_admin_does_not_count_and_missing_ids_are_skipped() -> None:
+    server = Server()
+    server.roles[VIEWER] = [
+        {"role": "viewer"},
+        {"role": "admin", "isTemporary": True, "temporaryAccessEndTime": "2020-01-01T00:00:00Z"},
+    ]
+    rows = adapter(server).identity_roles()
+    assert {r["name"]: r["roles"] for r in rows}["dev-agent"] == ["viewer"]
 
 
 def test_the_registry_gates_the_write_and_validates_params() -> None:
