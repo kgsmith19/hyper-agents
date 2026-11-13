@@ -69,8 +69,44 @@ def _send(method: str, url: str, token: str, body: Mapping[str, Any] | None) -> 
 ASSIGNABLE_ROLES = ("member", "viewer", "no-access")
 SIGNING_PATH = "/platform/lifeos-signing"
 LIFEOS_BROKER_NAME = "ai-coding-harness"
-SIGNING_FOLDER_PERMISSION = "list"
+# MB-011: forbid reading the private-key value on exactly the signing folder (and below).
+SIGNING_RULE = "deny-read-value"
+SIGNING_PRIVILEGE_SLUG = "lifeos-signing-deny"
+SIGNING_DENY_RULES: list[dict[str, Any]] = [
+    {
+        "subject": "secrets",
+        "inverted": True,
+        "action": ["readValue"],
+        "conditions": {"environment": INFISICAL_ENVIRONMENT, "secretPath": {"$eq": SIGNING_PATH}},
+    },
+    {
+        "subject": "secrets",
+        "inverted": True,
+        "action": ["readValue"],
+        "conditions": {
+            "environment": INFISICAL_ENVIRONMENT,
+            "secretPath": {"$glob": f"{SIGNING_PATH}/**"},
+        },
+    },
+]
 Sender = Callable[[str, str, str, Mapping[str, Any] | None], dict[str, Any]]
+
+
+def _canonical_rules(rules: list[Any]) -> list[str]:
+    """Order-free comparison of CASL rules; a string action equals a one-item list."""
+    out: list[str] = []
+    for rule in rules:
+        item = dict(cast(Mapping[str, Any], rule))
+        action = item.get("action")
+        item["action"] = sorted([action] if isinstance(action, str) else list(action or []))
+        item["inverted"] = bool(item.get("inverted"))
+        conditions = cast(Mapping[str, Any], item.get("conditions") or {})
+        item["conditions"] = {  # a bare value is Infisical's shorthand for {"$eq": value}
+            key: value if isinstance(value, Mapping) else {"$eq": value}
+            for key, value in conditions.items()
+        }
+        out.append(json.dumps(item, sort_keys=True))
+    return sorted(out)
 
 
 def _github_oidc_jwt() -> str:
@@ -286,11 +322,9 @@ class InfisicalAdapter:
             raise RuntimeError(f"read-back shows roles {after} for {identity}")
         return {"identity": identity, "before": before, "after": after}
 
-    def _folder_access_url(self, identity: str) -> str:
-        return (
-            f"{INFISICAL_API}/v1/projects/{quote(self._project_id)}"
-            f"/memberships/identities/{quote(identity)}/secret-folder-access"
-        )
+    def _privileges_url(self, privilege_id: str | None = None) -> str:
+        base = f"{INFISICAL_API}/v2/identity-project-additional-privilege"
+        return f"{base}/{quote(privilege_id)}" if privilege_id else base
 
     def _identity_row(self, identity: str) -> dict[str, Any]:
         row = next((item for item in self.identity_roles() if item["id"] == identity), None)
@@ -298,39 +332,49 @@ class InfisicalAdapter:
             raise LookupError(f"identity {identity} is not a member of this project")
         return row
 
-    def _signing_grants(self, identity: str) -> list[dict[str, Any]]:
-        response = self._send("GET", self._folder_access_url(identity), self._access_token(), None)
-        grants = cast(list[dict[str, Any]], response.get("folderAccess") or [])
-        return [
-            grant
-            for grant in grants
-            if grant.get("environment") == INFISICAL_ENVIRONMENT
-            and grant.get("secretPath") == SIGNING_PATH
-        ]
+    def _signing_privilege(self, identity: str) -> dict[str, Any] | None:
+        """The identity's ``lifeos-signing-deny`` privilege with its rules, or None.
+
+        The list endpoint returns metadata only, so the rules come from a read by id."""
+        listing = self._send(
+            "GET",
+            f"{self._privileges_url()}?identityId={quote(identity)}"
+            f"&projectId={quote(self._project_id)}",
+            self._access_token(),
+            None,
+        )
+        rows = cast(list[dict[str, Any]], listing.get("privileges") or [])
+        matches = [row for row in rows if row.get("slug") == SIGNING_PRIVILEGE_SLUG]
+        if len(matches) > 1:
+            raise RuntimeError(f"duplicate {SIGNING_PRIVILEGE_SLUG} privileges for {identity}")
+        if not matches:
+            return None
+        one = self._send(
+            "GET", self._privileges_url(str(matches[0]["id"])), self._access_token(), None
+        )
+        return cast(dict[str, Any], one.get("privilege") or {})
+
+    @staticmethod
+    def _privilege_state(privilege: Mapping[str, Any] | None) -> str:
+        if privilege is None:
+            return "missing"
+        if privilege.get("isTemporary"):
+            return "temporary"
+        held = _canonical_rules(cast(list[Any], privilege.get("permissions") or []))
+        return "deny" if held == _canonical_rules(SIGNING_DENY_RULES) else "drifted"
 
     def signing_folder_access_report(self) -> dict[str, Any]:
-        """Folder-role metadata only. The signing-key value is never requested."""
+        """Privilege metadata only. The signing-key value is never requested."""
         protected: list[str] = []
         drift: list[dict[str, str]] = []
         for row in self.identity_roles():
             if row["name"] == LIFEOS_BROKER_NAME:
                 continue
-            grants = self._signing_grants(str(row["id"]))
-            if len(grants) > 1:
-                permission = "duplicate"
-            elif not grants:
-                permission = "missing"
-            else:
-                grant = grants[0]
-                permission = str(grant.get("permission") or "missing")
-                if grant.get("isTemporary") or permission != SIGNING_FOLDER_PERMISSION:
-                    pass
-                else:
-                    protected.append(str(row["name"]))
-                    continue
-            drift.append(
-                {"identity": str(row["id"]), "name": str(row["name"]), "permission": permission}
-            )
+            state = self._privilege_state(self._signing_privilege(str(row["id"])))
+            if state == "deny":
+                protected.append(str(row["name"]))
+                continue
+            drift.append({"identity": str(row["id"]), "name": str(row["name"]), "state": state})
         return {
             "path": SIGNING_PATH,
             "broker": LIFEOS_BROKER_NAME,
@@ -338,53 +382,50 @@ class InfisicalAdapter:
             "drift": sorted(drift, key=lambda item: item["name"]),
         }
 
-    def restrict_signing_folder(self, identity: str, permission: str) -> dict[str, Any]:
-        """Apply the one safe folder override and read it back.
+    def restrict_signing_folder(self, identity: str, rule: str) -> dict[str, Any]:
+        """Give one non-broker identity the permanent deny-readValue privilege, then read it back.
 
-        The native folder role supersedes a broader project Viewer/Member role on this exact
-        folder. ``list`` exposes names and metadata, never secret values.
-        """
-        if permission != SIGNING_FOLDER_PERMISSION:
-            raise ValueError("only 'list' may be assigned to the LifeOS signing folder")
+        Infisical permissions are additive; only an inverted (forbid) rule can narrow what a
+        Viewer or Member role already allows. The rule forbids ``readValue`` on exactly the
+        signing folder, so names and metadata stay visible and the key value does not.
+        Rollback: DELETE the privilege by id (it holds nothing else)."""
+        if rule != SIGNING_RULE:
+            raise ValueError(f"only {SIGNING_RULE!r} may be applied to the LifeOS signing folder")
         row = self._identity_row(identity)
         if row["name"] == LIFEOS_BROKER_NAME:
             raise PermissionError("refusing to restrict the designated LifeOS token broker")
-        grants = self._signing_grants(identity)
-        if len(grants) > 1:
-            raise RuntimeError(f"multiple signing-folder grants exist for identity {identity}")
-        body = {
-            "environmentSlug": INFISICAL_ENVIRONMENT,
-            "secretPath": SIGNING_PATH,
-            "permission": SIGNING_FOLDER_PERMISSION,
+        current = self._signing_privilege(identity)
+        state = self._privilege_state(current)
+        body: dict[str, Any] = {
+            "slug": SIGNING_PRIVILEGE_SLUG,
+            "permissions": SIGNING_DENY_RULES,
             "type": {"isTemporary": False},
         }
-        if not grants:
-            method, action = "POST", "created"
-        elif grants[0].get("permission") == permission and not grants[0].get("isTemporary"):
-            return {
-                "identity": identity,
-                "name": row["name"],
-                "path": SIGNING_PATH,
-                "permission": permission,
-                "grant_id": str(grants[0].get("id") or ""),
-                "action": "unchanged",
-            }
+        if state == "deny":
+            action = "unchanged"
+        elif current is None:
+            action = "created"
+            self._send(
+                "POST",
+                self._privileges_url(),
+                self._access_token(),
+                {"identityId": identity, "projectId": self._project_id, **body},
+            )
         else:
-            method, action = "PATCH", "updated"
-        self._send(method, self._folder_access_url(identity), self._access_token(), body)
-        after = self._signing_grants(identity)
-        if (
-            len(after) != 1
-            or after[0].get("permission") != permission
-            or after[0].get("isTemporary")
-        ):
-            raise RuntimeError(f"read-back did not show a permanent list grant for {identity}")
+            action = "updated"
+            self._send(
+                "PATCH", self._privileges_url(str(current["id"])), self._access_token(), body
+            )
+        after = self._signing_privilege(identity)
+        if self._privilege_state(after) != "deny":
+            raise RuntimeError(f"read-back did not show the permanent deny rule for {identity}")
+        assert after is not None
         return {
             "identity": identity,
             "name": row["name"],
             "path": SIGNING_PATH,
-            "permission": permission,
-            "grant_id": str(after[0].get("id") or ""),
+            "rule": rule,
+            "privilege_id": str(after.get("id") or ""),
             "action": action,
         }
 
@@ -400,7 +441,7 @@ class InfisicalAdapter:
         if action == "signing_folder_access_report":
             return self.signing_folder_access_report()
         if action == "restrict_signing_folder":
-            return self.restrict_signing_folder(params["identity"], params["permission"])
+            return self.restrict_signing_folder(params["identity"], params["rule"])
         path = params["source_path"]
         if action == "exists":
             value = self.get(path, params["source_name"])

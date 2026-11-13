@@ -162,10 +162,27 @@ def test_the_check_turns_each_admin_into_one_resolver_fix_and_maintain_dispatche
     assert "least-privilege-identities" in report["pending"]  # watch, not done, until read back
 
 
-class FolderServer(Server):
-    """Fake native folder-access API. It carries metadata only, never a secret value."""
+DENY_RULES: list[dict[str, Any]] = [
+    {
+        "subject": "secrets",
+        "inverted": True,
+        "action": ["readValue"],
+        "conditions": {"environment": "prod", "secretPath": {"$eq": SIGNING_PATH}},
+    },
+    {
+        "subject": "secrets",
+        "inverted": True,
+        "action": ["readValue"],
+        "conditions": {"environment": "prod", "secretPath": {"$glob": f"{SIGNING_PATH}/**"}},
+    },
+]
+PRIVILEGES = "/v2/identity-project-additional-privilege"
 
-    def __init__(self) -> None:
+
+class FolderServer(Server):
+    """Fake identity additional-privilege API (v2). Metadata and rules only, never a value."""
+
+    def __init__(self, refuse_create: int | None = None) -> None:
         super().__init__()
         self.roles = {
             BROKER: [{"role": "member"}],
@@ -177,14 +194,21 @@ class FolderServer(Server):
             VIEWER: "dev-agent",
             DEPLOY: "lifeos-deploy",
         }
-        self.grants: dict[str, dict[str, Any]] = {
-            DEPLOY: {
+        self.refuse_create = refuse_create
+        # DEPLOY starts with a drifted privilege: an additive "read" rule, which narrows nothing.
+        self.privileges: dict[str, dict[str, Any]] = {
+            "10000000-0000-4000-8000-000000000003": {
                 "id": "10000000-0000-4000-8000-000000000003",
                 "identityId": DEPLOY,
-                "environment": "prod",
-                "secretPath": SIGNING_PATH,
-                "permission": "read",
+                "slug": "lifeos-signing-deny",
                 "isTemporary": False,
+                "permissions": [
+                    {
+                        "subject": "secrets",
+                        "action": "read",
+                        "conditions": {"environment": "prod", "secretPath": SIGNING_PATH},
+                    }
+                ],
             }
         }
 
@@ -192,7 +216,7 @@ class FolderServer(Server):
         self, method: str, url: str, token: str, body: Mapping[str, Any] | None
     ) -> dict[str, Any]:
         self.calls.append((method, url, body))
-        clean = url.split("?", 1)[0]
+        clean, _, query = url.partition("?")
         if clean.endswith("/identity-memberships"):
             return {
                 "totalCount": len(self.roles),
@@ -205,35 +229,48 @@ class FolderServer(Server):
                     for identity, roles in self.roles.items()
                 ],
             }
-        if "/secret-folder-access" in clean:
-            identity = clean.split("/memberships/identities/", 1)[1].split("/", 1)[0]
+        if PRIVILEGES in clean:
+            tail = clean.split(PRIVILEGES, 1)[1].strip("/")
+            if method == "GET" and not tail:
+                params = dict(item.split("=", 1) for item in query.split("&"))
+                return {
+                    "privileges": [
+                        {k: v for k, v in row.items() if k not in ("permissions", "identityId")}
+                        for row in self.privileges.values()
+                        if row["identityId"] == params["identityId"]
+                    ]
+                }
             if method == "GET":
-                grant = self.grants.get(identity)
-                return {"folderAccess": [grant] if grant else []}
+                return {"privilege": self.privileges[tail]}
             assert body is not None
-            current = self.grants.get(identity)
-            grant_id = (current or {}).get("id", f"20000000-0000-4000-8000-{identity[-12:]}")
-            self.grants[identity] = {
-                "id": grant_id,
-                "identityId": identity,
-                "environment": body["environmentSlug"],
-                "secretPath": body["secretPath"],
-                "permission": body["permission"],
-                "isTemporary": body.get("type", {}).get("isTemporary", False),
-            }
-            return {"folderAccess": self.grants[identity]}
+            if method == "POST":
+                if self.refuse_create is not None:
+                    raise urllib.error.HTTPError(url, self.refuse_create, "plan", Message(), None)
+                new_id = f"20000000-0000-4000-8000-{body['identityId'][-12:]}"
+                self.privileges[new_id] = {
+                    "id": new_id,
+                    "identityId": body["identityId"],
+                    "slug": body["slug"],
+                    "isTemporary": body["type"]["isTemporary"],
+                    "permissions": body["permissions"],
+                }
+                return {"privilege": self.privileges[new_id]}
+            row = self.privileges[tail]  # PATCH
+            row.update(slug=body["slug"], permissions=body["permissions"])
+            row["isTemporary"] = body["type"]["isTemporary"]
+            return {"privilege": row}
         return super().__call__(method, url, token, body)
 
 
-def test_signing_folder_report_flags_missing_or_value_read_access_and_exempts_broker() -> None:
+def test_signing_folder_report_flags_missing_or_drifted_privilege_and_exempts_broker() -> None:
     result = adapter(FolderServer()).execute("signing_folder_access_report", {})
     assert result == {
         "path": SIGNING_PATH,
         "broker": "ai-coding-harness",
         "protected": [],
         "drift": [
-            {"identity": VIEWER, "name": "dev-agent", "permission": "missing"},
-            {"identity": DEPLOY, "name": "lifeos-deploy", "permission": "read"},
+            {"identity": VIEWER, "name": "dev-agent", "state": "missing"},
+            {"identity": DEPLOY, "name": "lifeos-deploy", "state": "drifted"},
         ],
     }
 
@@ -242,38 +279,57 @@ def test_restrict_signing_folder_creates_updates_and_is_idempotent() -> None:
     server = FolderServer()
     infisical = adapter(server)
     created = infisical.execute(
-        "restrict_signing_folder", {"identity": VIEWER, "permission": "list"}
+        "restrict_signing_folder", {"identity": VIEWER, "rule": "deny-read-value"}
     )
     assert created["action"] == "created"
-    assert created["permission"] == "list" and created["path"] == SIGNING_PATH
+    assert created["rule"] == "deny-read-value" and created["path"] == SIGNING_PATH
     updated = infisical.execute(
-        "restrict_signing_folder", {"identity": DEPLOY, "permission": "list"}
+        "restrict_signing_folder", {"identity": DEPLOY, "rule": "deny-read-value"}
     )
     assert updated["action"] == "updated"
     unchanged = infisical.execute(
-        "restrict_signing_folder", {"identity": DEPLOY, "permission": "list"}
+        "restrict_signing_folder", {"identity": DEPLOY, "rule": "deny-read-value"}
     )
     assert unchanged["action"] == "unchanged"
     writes = [call for call in server.calls if call[0] in ("POST", "PATCH")]
     assert [call[0] for call in writes] == ["POST", "PATCH"]
-    assert all(
-        call[2]
-        == {
-            "environmentSlug": "prod",
-            "secretPath": SIGNING_PATH,
-            "permission": "list",
-            "type": {"isTemporary": False},
-        }
-        for call in writes
-    )
+    for _, _, body in writes:
+        assert body is not None
+        assert body["permissions"] == DENY_RULES  # inverted readValue only, never a grant
+        assert body["type"] == {"isTemporary": False}
+        assert body["slug"] == "lifeos-signing-deny"
+    assert writes[0][2]["identityId"] == VIEWER
+    report = infisical.execute("signing_folder_access_report", {})
+    assert report["drift"] == [] and report["protected"] == ["dev-agent", "lifeos-deploy"]
 
 
-def test_signing_folder_op_refuses_broker_or_any_role_that_reads_values() -> None:
+def test_server_shorthand_conditions_still_read_as_the_deny_rule() -> None:
+    server = FolderServer()
+    server.privileges["10000000-0000-4000-8000-000000000003"]["permissions"] = [
+        {**rule, "action": "readValue", "conditions": {**rule["conditions"], "environment": "prod"}}
+        for rule in reversed(DENY_RULES)
+    ]
+    result = adapter(server).execute("signing_folder_access_report", {})
+    assert [d["name"] for d in result["drift"]] == ["dev-agent"]
+
+
+def test_signing_folder_op_refuses_broker_or_any_other_rule() -> None:
     infisical = adapter(FolderServer())
     with pytest.raises(PermissionError, match="broker"):
-        infisical.execute("restrict_signing_folder", {"identity": BROKER, "permission": "list"})
-    with pytest.raises(ValueError, match="only 'list'"):
-        infisical.execute("restrict_signing_folder", {"identity": VIEWER, "permission": "read"})
+        infisical.execute(
+            "restrict_signing_folder", {"identity": BROKER, "rule": "deny-read-value"}
+        )
+    with pytest.raises(ValueError, match="only 'deny-read-value'"):
+        infisical.execute("restrict_signing_folder", {"identity": VIEWER, "rule": "list"})
+
+
+def test_plan_refusal_surfaces_as_http_status_not_done() -> None:
+    infisical = adapter(FolderServer(refuse_create=402))
+    with pytest.raises(urllib.error.HTTPError) as caught:
+        infisical.execute(
+            "restrict_signing_folder", {"identity": VIEWER, "rule": "deny-read-value"}
+        )
+    assert caught.value.code == 402
 
 
 def test_folder_boundary_is_registered_r0_r2_and_owner_resolves_each_drift() -> None:
@@ -285,7 +341,7 @@ def test_folder_boundary_is_registered_r0_r2_and_owner_resolves_each_drift() -> 
         run_op(
             registry,
             op.id,
-            {"identity": VIEWER, "permission": "read"},
+            {"identity": VIEWER, "rule": "list"},
             mode="dry-run",
             gate=None,
             adapters={},
@@ -302,13 +358,13 @@ def test_folder_boundary_is_registered_r0_r2_and_owner_resolves_each_drift() -> 
     status = owner._signing_folder_boundary(action)  # pyright: ignore[reportPrivateUsage]
     assert not status.done
     assert status.fixes == (
-        (("identity", VIEWER), ("permission", "list")),
-        (("identity", DEPLOY), ("permission", "list")),
+        (("identity", VIEWER), ("rule", "deny-read-value")),
+        (("identity", DEPLOY), ("rule", "deny-read-value")),
     )
     owner.execute("status", {})
     dispatched = [cast(dict[str, str], w[1]) for w in fake.writes if w[0] == "dispatch"]
     assert {
         "op": op.id,
-        "params": json.dumps({"identity": VIEWER, "permission": "list"}),
+        "params": json.dumps({"identity": VIEWER, "rule": "deny-read-value"}),
         "mode": "apply",
     } in dispatched

@@ -42,8 +42,9 @@ ops:
       - name: role
         enum: [member, viewer, no-access]
 
-  # Folder-level override (#86): native Infisical RBAC supersedes broad project roles on
-  # exactly /platform/lifeos-signing. List exposes metadata but not the private-key value.
+  # Signing-folder boundary (#86, MB-011). Infisical permissions are additive, so the R2 op
+  # adds one identity additional privilege (slug lifeos-signing-deny) whose inverted rules
+  # forbid readValue on exactly /platform/lifeos-signing; names and metadata stay visible.
   - id: infisical.signing_folder.report
     adapter: infisical
     action: signing_folder_access_report
@@ -58,8 +59,8 @@ ops:
     params:
       - name: identity
         pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-      - name: permission
-        enum: [list]
+      - name: rule
+        enum: [deny-read-value]
 
   - id: github.secret.list
     adapter: github

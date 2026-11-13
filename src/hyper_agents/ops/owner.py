@@ -268,7 +268,8 @@ class OwnerAdapter:
         )
 
     def _signing_folder_boundary(self, action: OwnerAction) -> Status:
-        """Every non-broker workload must have the permanent metadata-only folder role."""
+        """Every non-broker workload must hold the permanent deny-readValue privilege on the
+        signing folder; each one without it becomes one fix for the resolver."""
         report = cast(dict[str, Any], self._secrets.signing_folder_access_report())
         drift = cast(list[dict[str, str]], report["drift"])
         if not drift:
@@ -280,8 +281,10 @@ class OwnerAdapter:
         names = ", ".join(item["name"] for item in drift)
         return Status(
             False,
-            f"folder override missing or too broad for {names}",
-            fixes=tuple((("identity", item["identity"]), ("permission", "list")) for item in drift),
+            f"value-read deny missing or drifted for {names}",
+            fixes=tuple(
+                (("identity", item["identity"]), ("rule", "deny-read-value")) for item in drift
+            ),
         )
 
     def execute(self, action: str, params: Mapping[str, str]) -> dict[str, Any]:

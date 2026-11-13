@@ -52,7 +52,7 @@ One Infisical project (display name `central-vault`) holds every repository's se
 | `/platform/lifeos-signing/` | `LIFEOS_AGENT_JWT_PRIVATE_KEY` | the same op, once, when neither key half exists; never rotated | the broker only (whoever reads it can mint any token) |
 | `/platform/lifeos-deploy/` | `LIFEOS_AGENT_JWT_PUBLIC_KEY` | the same op, once, when neither key half exists; never rotated | `ops/cloud/remote.sh` into the LifeOS API env |
 
-The signing key lives apart from the tokens so that the native folder override in #86 can restrict
-every non-broker workload to `List` on that exact folder. `List` exposes names and metadata but not
-values. `ai-coding-harness` is the sole exempt broker because token renewal must read the private
+The signing key lives apart from the tokens so that one forbid rule (#86/#88: the
+`lifeos-signing-deny` identity privilege, inverted `readValue` on that folder) keeps the value
+away from every non-broker workload. Names and metadata stay visible. `ai-coding-harness` is the sole exempt broker because token renewal must read the private
 key. See `access-model.md` for the check, resolver and rollback.

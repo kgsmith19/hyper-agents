@@ -16,6 +16,9 @@ A check that raises is reported as "check failed", never as done.
 
 import hashlib
 import json
+import re
+import urllib.error
+import urllib.parse
 from collections.abc import Callable, Mapping
 from dataclasses import replace
 from datetime import datetime, timedelta
@@ -37,6 +40,20 @@ from hyper_agents.domain.owner_actions import (
 
 Check = Callable[[OwnerAction], Status]
 
+# Path segments that are ids (uuids, hex digests, numbers) are replaced before display.
+_ID_SEGMENT = re.compile(r"^(?:[0-9a-fA-F-]{16,}|\d+)$")
+
+
+def describe_failure(error: Exception) -> str:
+    """A check failure as shown on the tracker: the error type, and for an HTTP error its status
+    and path template, so a wrong endpoint diagnoses itself. Never a message, query or id: those
+    could carry provider detail."""
+    if isinstance(error, urllib.error.HTTPError):
+        path = urllib.parse.urlsplit(error.url or "").path
+        template = "/".join("{id}" if _ID_SEGMENT.match(part) else part for part in path.split("/"))
+        return f"HTTPError {error.code} at {template or '?'}"
+    return type(error).__name__
+
 
 def run_checks(actions: tuple[OwnerAction, ...], checks: Mapping[str, Check]) -> dict[str, Status]:
     statuses: dict[str, Status] = {}
@@ -48,8 +65,8 @@ def run_checks(actions: tuple[OwnerAction, ...], checks: Mapping[str, Check]) ->
         try:
             statuses[action.id] = check(action)
         except Exception as error:  # a broken check must never read as done
-            # Only the error type reaches the Item: a message could carry provider detail.
-            statuses[action.id] = Status(False, f"check failed: {type(error).__name__}")
+            # Only the type (and HTTP status + path template) reaches the Item, never a message.
+            statuses[action.id] = Status(False, f"check failed: {describe_failure(error)}")
     return statuses
 
 
