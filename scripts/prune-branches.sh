@@ -84,5 +84,6 @@ prune agent-extensions issue/36-queue-guard-proof 10b0bcdabe3d67e5a425e959578a9f
 prune hyper-agents ccr-a3588a7e-gkdp4s 9e7fd0f9ad5248bed7eea731e095e1e756699eb4 DEL
 prune hyper-agents ccr-75b2b0cd-yfz3b3 185df3f33ef93bc2dfba1ec13ed3392d3a6e847e DEL
 prune hyperbolic-core ccr-75b2b0cd-yfz3b3 86573b673680e8c06f87eb3c8e8f8c66351bbb4b DEL
+prune hyperbolic-core ccr-e456a9de-6bvwul 359c86519180009f55268c281c0a6e6e0d83f39d DEL
 prune agent-engineering-standard ccr-75b2b0cd-yfz3b3 025ac96534255815c4307d8b9325ef257706cd8f DEL
 echo "deleted=$ok skipped=$skip failed=$fail"

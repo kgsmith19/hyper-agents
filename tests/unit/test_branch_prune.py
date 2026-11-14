@@ -136,7 +136,8 @@ def test_the_committed_ledger_matches_the_owner_script() -> None:
         (f"kgsmith19/{p[1]}", p[2], p[3], p[4] == "ARCH")
         for p in (line.split() for line in script if line.startswith("prune "))
     }
-    assert ledger == scripted and len(ledger) == 70
+    # 70 from the 2026-11-13 reconciliation + ccr-e456a9de-6bvwul (2026-11-14, #94).
+    assert ledger == scripted and len(ledger) == 71
 
 
 def test_the_op_is_registered_r1_and_runs_in_maintain() -> None:

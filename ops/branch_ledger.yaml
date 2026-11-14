@@ -78,3 +78,5 @@ repos:
     - {branch: issue/443-queue-guard-proof, sha: 001c7953c9f610345fd926f2bc379e9a41f5e6fd, archive: true}
     - {branch: issue/499-freeze-cloud-ops, sha: 407f65b328834547a6da0566de45e64104ddfb71, archive: true}
     - {branch: ccr-75b2b0cd-yfz3b3, sha: 86573b673680e8c06f87eb3c8e8f8c66351bbb4b}
+    # 2026-11-14: head of hyperbolic-core PR #629 (merged as 1d054fb); repo.ledger_drift finding.
+    - {branch: ccr-e456a9de-6bvwul, sha: 359c86519180009f55268c281c0a6e6e0d83f39d}
