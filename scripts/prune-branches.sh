@@ -87,7 +87,7 @@ prune hyperbolic-core ccr-75b2b0cd-yfz3b3 86573b673680e8c06f87eb3c8e8f8c66351bbb
 prune hyperbolic-core ccr-e456a9de-6bvwul 359c86519180009f55268c281c0a6e6e0d83f39d DEL
 prune agent-engineering-standard ccr-75b2b0cd-yfz3b3 025ac96534255815c4307d8b9325ef257706cd8f DEL
 prune agent-engineering-standard ccr-94977308-r74df1 af7192af710084e0cee09897d9dbb34e01385eb7 DEL
-prune agent-engineering-standard ccr-fe1c5349-19w17j 6762a7ad321184a1725b844dd953e5c59c1fb1e2 DEL
+prune agent-engineering-standard ccr-fe1c5349-19w17j b4f0b1100df9e8d8c6ba7ba6a1562b5e31b4388c DEL
 prune hyperbolic-core ccr-94977308-r74df1 dd5136c86996373ba50e0def5ce9584260560b6c DEL
 prune hyperbolic-core issue/630-registry-needs-me 538f049c6c557cc0ca564fe528dfabe3510af1f8 DEL
 prune hyperbolic-core issue/636-docs-sheets-drift 37cab35ca54c834caab7efd24d2b51974b837733 DEL
