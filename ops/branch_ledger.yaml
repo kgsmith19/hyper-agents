@@ -18,7 +18,7 @@ repos:
     - {branch: issue/281-queue-guard-proof, sha: 482db9c7228f7336a08abfac23dc735052a0f346, archive: true}
     - {branch: ccr-75b2b0cd-yfz3b3, sha: 025ac96534255815c4307d8b9325ef257706cd8f}
     - {branch: ccr-94977308-r74df1, sha: af7192af710084e0cee09897d9dbb34e01385eb7}
-    - {branch: ccr-fe1c5349-19w17j, sha: 6762a7ad321184a1725b844dd953e5c59c1fb1e2}
+    - {branch: ccr-fe1c5349-19w17j, sha: b4f0b1100df9e8d8c6ba7ba6a1562b5e31b4388c}
   kgsmith19/agent-extensions:
     - {branch: claude/sleepy-lamport-rk45pp, sha: 8e1acaf1c50c7aa68901a81762c9d5d1906bd5c0}
     - {branch: issue/36-queue-guard-proof, sha: 10b0bcdabe3d67e5a425e959578a9fdc33ba4a99, archive: true}
