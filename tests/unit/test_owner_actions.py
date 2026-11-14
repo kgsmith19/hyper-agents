@@ -119,7 +119,7 @@ class HealthyQueue(QueueHistory):
     def __init__(self) -> None:
         pass
 
-    def status(self) -> Status:
+    def status(self, _retried: bool = False) -> Status:
         return Status(True, "history: ok, complete through seq 616; handoff reads back")
 
 

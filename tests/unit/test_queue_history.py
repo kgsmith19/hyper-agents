@@ -16,14 +16,19 @@ from hyper_agents.adapters.fake_forge import FakeForge
 from hyper_agents.ops.core import run_op
 from hyper_agents.ops.fleet import load_fleet
 from hyper_agents.ops.owner import load_owner_actions
-from hyper_agents.ops.queue_history import QueueConfig, QueueHistory
+from hyper_agents.ops.queue_history import (
+    QueueCheckError,
+    QueueConfig,
+    QueueHistory,
+    load_queue_config,
+)
 from hyper_agents.ops.registry import load_registry
 
 ROOT = Path(__file__).resolve().parents[2]
 FAKE_TOKEN = "tok-123456789"  # noqa: S105 - test value, not a secret
 CONFIG = QueueConfig(
     repo="kgsmith19/agent-engineering-standard",
-    ref="main",
+    ref="81f844621381e8e7352d6e819899b2fded6014dd",
     issue=277,
     tools=("tools/queue_core.py", "tools/queue_store.py", "tools/work_queue.py"),
 )
@@ -45,6 +50,13 @@ state.setdefault("calls", []).append(args)
 state["prefix"] = sys.argv[1:5]
 if args == ["history", "--check"]:
     save()
+    if state.get("check_rc"):
+        print("error: transport: GET /repos/x failed: provider detail", file=sys.stderr)
+        sys.exit(state["check_rc"])
+    if state.pop("close_after_check", False):
+        state["gap"] = False; save()
+        print("history: DEGRADED, history is missing event 583 (7cf7a798000e...); repair: ...")
+        sys.exit(2)
     if state["gap"]:
         print("history: DEGRADED, history is missing event 583 (7cf7a798000e...); repair: ...")
         sys.exit(2)
@@ -56,18 +68,24 @@ if args == ["handoff", "show"]:
     sys.exit(state.get("handoff_rc", 0))
 if args[0] == "history-repair":
     apply = "--apply" in args
-    if not state["gap"]:
+    if not state["gap"] or state.get("probe_says_complete"):
         save(); print(json.dumps({"status": "complete", "seq": 616, "appended": []})); sys.exit(0)
     if not state["recoverable"]:
         save()
         print(json.dumps({"status": "unrecoverable",
                           "blocker": {"kind": "ManualBlocker", "missing_seq": 583}}))
         sys.exit(2)
-    if apply and not state.get("append_fails"):
+    if apply and state.get("append_fails"):
+        save(); print("error: history is missing event 583 (7cf7a798000e...)", file=sys.stderr)
+        sys.exit(2)
+    if apply:
         state["gap"] = False
     save()
-    print(json.dumps({"status": "recovered" if apply else "recoverable", "seq": 616,
-                      "appended": [[583, "7cf7a798000e"]]}))
+    report = {"status": "recovered" if apply else "recoverable", "seq": 616,
+              "appended": [[583, "7cf7a798000e"]]}
+    if apply:
+        report["read_back"] = {"history": "ok", "handoff": "ok"}
+    print(json.dumps(report))
     sys.exit(0)
 save(); sys.exit(9)
 """
@@ -116,6 +134,7 @@ def test_unreadable_handoff_is_not_done(stub: tuple[FakeForge, Path]) -> None:
     state.write_text(json.dumps({"gap": False, "recoverable": True, "handoff_rc": 2}))
     status = _queue(forge).status()
     assert status.done is False and "handoff" in status.detail
+    assert status.needs_owner is True  # a history repair cannot fix a handoff: no resolver
 
 
 def test_no_handoff_yet_still_counts_as_complete(stub: tuple[FakeForge, Path]) -> None:
@@ -145,11 +164,15 @@ def test_unrecoverable_gap_asks_the_owner_at_once(stub: tuple[FakeForge, Path]) 
 def test_recover_applies_then_verifies_and_is_idempotent(stub: tuple[FakeForge, Path]) -> None:
     forge, state = stub
     result = _queue(forge).recover()
-    assert result["repair"]["status"] == "recovered"
-    assert result["verified"] is True
-    assert ["history-repair", "--apply"] in _state(state)["calls"]
+    assert result == {
+        "status": "recovered",
+        "seq": 616,
+        "appended": [[583, "7cf7a798000e"]],
+        "verified": True,
+    }
+    assert _state(state)["calls"] == [["history-repair", "--apply"]]  # the CLI reads back
     again = _queue(forge).recover()
-    assert again["repair"]["status"] == "complete" and again["verified"] is True
+    assert again["status"] == "complete" and again["verified"] is True
 
 
 def test_recover_that_does_not_verify_fails(stub: tuple[FakeForge, Path]) -> None:
@@ -216,6 +239,60 @@ def test_recover_op_refused_outside_its_gate(stub: tuple[FakeForge, Path]) -> No
             run_id="r",
         )
     assert "calls" not in _state(state)
+
+
+def test_transport_failure_is_check_failed_never_an_owner_request(
+    stub: tuple[FakeForge, Path],
+) -> None:
+    """Review finding: exit 5 (transport) must not read as an unrecoverable gap."""
+    forge, state = stub
+    state.write_text(json.dumps({"gap": True, "recoverable": True, "check_rc": 5}))
+    with pytest.raises(QueueCheckError) as caught:
+        _queue(forge).status()
+    assert "provider detail" not in str(caught.value)  # CLI free text never surfaces
+    assert _state(state)["calls"] == [["history", "--check"]]  # no probe, no write
+
+
+def test_gap_closed_between_reads_rechecks_instead_of_asking_the_owner(
+    stub: tuple[FakeForge, Path],
+) -> None:
+    forge, state = stub
+    state.write_text(json.dumps({"gap": True, "recoverable": True, "close_after_check": True}))
+    status = _queue(forge).status()
+    assert status.done is True and status.needs_owner is False
+
+
+def test_a_check_and_probe_that_keep_disagreeing_fail_instead_of_looping(
+    stub: tuple[FakeForge, Path],
+) -> None:
+    forge, state = stub
+    state.write_text(json.dumps({"gap": True, "recoverable": True, "probe_says_complete": True}))
+    with pytest.raises(QueueCheckError):
+        _queue(forge).status()
+    assert _state(state)["calls"].count(["history", "--check"]) == 2  # one re-check only
+
+
+def test_tools_are_fetched_once_per_instance(stub: tuple[FakeForge, Path]) -> None:
+    forge, _ = stub
+    reads: list[str] = []
+    original = forge.read_file
+
+    def counting(repo: str, ref: str, path: str) -> str:
+        reads.append(path)
+        return original(repo, ref, path)
+
+    forge.read_file = counting  # type: ignore[method-assign]
+    queue = _queue(forge)
+    queue.status()
+    queue.recover()
+    assert sorted(reads) == sorted(CONFIG.tools)
+
+
+def test_a_branch_ref_is_refused() -> None:
+    with pytest.raises(ValueError, match="commit SHA"):
+        load_queue_config(
+            {"repo": CONFIG.repo, "ref": "main", "issue": 277, "tools": list(CONFIG.tools)}
+        )
 
 
 def _maintain_status(forge: FakeForge) -> dict[str, Any]:
@@ -288,3 +365,16 @@ def test_maintain_closes_the_item_once_history_is_complete(stub: tuple[FakeForge
     report = _maintain_status(forge)
     assert report["pending"] == [] and "queue-history" in report["done"]
     assert _dispatched(forge) == []
+
+
+def test_maintain_treats_a_transport_failure_as_watch_and_dispatches_nothing(
+    stub: tuple[FakeForge, Path],
+) -> None:
+    forge, state = stub
+    state.write_text(json.dumps({"gap": True, "recoverable": True, "check_rc": 5}))
+    report = _maintain_status(forge)
+    assert report["pending"] == ["queue-history"]
+    assert _dispatched(forge) == []
+    body = next(b for _, _, b, _ in forge.tracked.values())
+    assert "check failed: QueueCheckError" in body
+    assert "provider detail" not in body

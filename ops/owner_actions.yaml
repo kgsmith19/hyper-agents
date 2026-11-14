@@ -274,7 +274,10 @@ actions:
       source: https://github.com/kgsmith19/agent-engineering-standard/issues/342
     steps:
       - >-
-        Only shown when no exact copy of the missing event exists. Reply on
+        If the item says the handoff does not match its digest: set a fresh handoff with
+        `python3 tools/work_queue.py handoff set --file -` in the Standard (or ask any agent to).
+      - >-
+        Only if it says no exact copy of a missing event exists: reply on
         agent-engineering-standard#342 with either "authorize re-anchor" (a versioned procedure
         then keeps a digest manifest of the old state, records the missing link and proves item,
         order and handoff equivalence before it activates) or a pointer to a copy of the event

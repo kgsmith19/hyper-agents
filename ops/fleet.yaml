@@ -29,10 +29,12 @@ repos:
 branch_ledger: branch_ledger.yaml
 
 # The Standard's execution queue (agent-engineering-standard#342). The queue.* ops fetch these
-# tools at this ref through the forge and run them; the queue logic lives only in the Standard.
+# tools at this commit through the forge and run them with the fleet token, so `ref` must be a
+# full commit SHA (never a branch); bumping it is a reviewed PR. The queue logic lives only in
+# the Standard. 81f8446 = the Standard's main after #343 (history --check / history-repair).
 queue:
   repo: kgsmith19/agent-engineering-standard
-  ref: main
+  ref: 81f844621381e8e7352d6e819899b2fded6014dd
   issue: 277
   tools:
     - tools/queue_core.py

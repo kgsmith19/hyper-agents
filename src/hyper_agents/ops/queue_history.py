@@ -2,13 +2,18 @@
 
 The Agent Engineering Standard owns the queue, its hash-chained history and the repair CLI
 (``work_queue.py history --check`` / ``history-repair``). This adapter copies nothing: it
-fetches those modules at the configured ref through the forge port, runs the CLI in a
-temporary directory with the fleet token in its environment, and maps the result to an
-owner-action status or a receipt. Secret values never reach a status, a receipt or argv.
+fetches those modules once, at the commit pinned in ``ops/fleet.yaml``, through the forge
+port, runs the CLI in a temporary directory with the fleet token in its environment only,
+and maps exit codes and JSON to an owner-action status or a receipt.
+
+Only the CLI's structured output is trusted. Free text from the CLI (which may carry
+provider detail) never reaches a status, a receipt or the tracker; anything that is not a
+recognised result raises, so the owner-actions tracker records a type-only "check failed".
 """
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -20,9 +25,18 @@ from typing import Any, cast
 from hyper_agents.application.ports import ForgePort
 from hyper_agents.domain.owner_actions import Status
 
-EXIT_OK, EXIT_EMPTY = 0, 3  # work_queue.py: 3 = no handoff yet, which is not a fault
-TIMEOUT_SECONDS = 300
+# work_queue.py exit codes: 0 ok, 2 malformed queue or history, 3 no handoff yet.
+EXIT_OK, EXIT_FORMAT, EXIT_EMPTY = 0, 2, 3
+# One maintenance check runs up to three CLI calls; keep the worst case well inside the job.
+TIMEOUT_SECONDS = 90
 PASS_THROUGH = ("PATH", "HTTPS_PROXY", "https_proxy", "SSL_CERT_FILE", "REQUESTS_CA_BUNDLE")
+_SHA = re.compile(r"^[0-9a-f]{40}$")
+_GAP = re.compile(r"history is missing event (\d+) \(([0-9a-f]{12})\.\.\.\)")
+_COMPLETE = re.compile(r"^history: ok, complete through seq (\d+)$")
+
+
+class QueueCheckError(RuntimeError):
+    """The CLI gave no recognised result (transport, auth, refusal): proves nothing."""
 
 
 @dataclass(frozen=True)
@@ -39,9 +53,11 @@ def load_queue_config(raw: Mapping[str, Any] | None) -> QueueConfig | None:
     tools = tuple(str(tool) for tool in cast(list[Any], raw["tools"]))
     if not any(tool.endswith("/work_queue.py") for tool in tools):
         raise ValueError("queue.tools must include the Standard's work_queue.py")
-    return QueueConfig(
-        repo=str(raw["repo"]), ref=str(raw["ref"]), issue=int(raw["issue"]), tools=tools
-    )
+    ref = str(raw["ref"])
+    if not _SHA.match(ref):
+        # The tools run with the fleet token: an immutable commit, never a moving branch.
+        raise ValueError("queue.ref must be a full 40-character commit SHA")
+    return QueueConfig(repo=str(raw["repo"]), ref=ref, issue=int(raw["issue"]), tools=tools)
 
 
 class QueueHistory:
@@ -63,14 +79,20 @@ class QueueHistory:
             if base_env is not None
             else {k: v for k, v in os.environ.items() if k in PASS_THROUGH}
         )
+        self._sources: dict[str, str] | None = None
+
+    def _tools(self) -> dict[str, str]:
+        """Every configured tool, fetched once per instance; a missing one raises before
+        anything runs."""
+        if self._sources is None:
+            self._sources = {
+                Path(tool).name: self._forge.read_file(self._config.repo, self._config.ref, tool)
+                for tool in self._config.tools
+            }
+        return self._sources
 
     def _cli(self, *args: str) -> subprocess.CompletedProcess[str]:
-        """Fetch every configured tool first (a missing one raises before anything runs),
-        then run the Standard's CLI against the configured queue."""
-        sources = {
-            Path(tool).name: self._forge.read_file(self._config.repo, self._config.ref, tool)
-            for tool in self._config.tools
-        }
+        sources = self._tools()
         with tempfile.TemporaryDirectory(prefix="queue-tools-") as root:
             for name, text in sources.items():
                 Path(root, name).write_text(text, encoding="utf-8")
@@ -91,7 +113,7 @@ class QueueHistory:
                 str(self._config.issue),
                 *args,
             ]
-            return subprocess.run(  # noqa: S603 - argv list built here, no shell; code from the configured ref
+            return subprocess.run(  # noqa: S603 - argv list built here, no shell; pinned code
                 argv,
                 cwd=root,
                 env=env,
@@ -102,58 +124,91 @@ class QueueHistory:
             )
 
     @staticmethod
-    def _line(result: subprocess.CompletedProcess[str]) -> str:
-        text = (result.stdout.strip() or result.stderr.strip()).splitlines()
-        return text[-1][:300] if text else f"exit {result.returncode}"
-
-    def status(self) -> Status:
-        """Done only when the chain is complete and the handoff reads back. A gap with an
-        exact copy available goes to the resolver; one without asks the owner at once."""
-        check = self._cli("history", "--check")
-        if check.returncode == EXIT_OK:
-            handoff = self._cli("handoff", "show")
-            if handoff.returncode not in (EXIT_OK, EXIT_EMPTY):
-                return Status(
-                    False, f"history complete but handoff unreadable: {self._line(handoff)}"
-                )
-            return Status(True, f"{self._line(check)}; handoff reads back")
-        detail = self._line(check).split("; repair:")[0]
-        probe = self._cli("history-repair")
-        report = self._report(probe)
-        if probe.returncode == EXIT_OK and report.get("status") == "recoverable":
-            found = ", ".join(f"{seq} ({fp})" for seq, fp in report.get("appended", []))
-            return Status(False, f"{detail}; exact copy found for {found}, recovery dispatched")
-        return Status(
-            False,
-            f"{detail}; no exact copy in any comment, export or mirror: a versioned re-anchor "
-            "needs the queue owner's authorization",
-            needs_owner=True,
-        )
-
-    @staticmethod
     def _report(result: subprocess.CompletedProcess[str]) -> dict[str, Any]:
         try:
-            return cast(dict[str, Any], json.loads(result.stdout))
+            parsed = json.loads(result.stdout)
         except ValueError:
             return {}
+        return cast(dict[str, Any], parsed) if isinstance(parsed, dict) else {}
+
+    def status(self, _retried: bool = False) -> Status:
+        """Done only when the chain is complete and the handoff reads back. A gap with an
+        exact copy goes to the resolver; one without, or an unreadable handoff over a
+        complete chain, needs the owner. Anything unrecognised raises (check failed)."""
+        check = self._cli("history", "--check")
+        line = check.stdout.strip()
+        if check.returncode == EXIT_OK and (done := _COMPLETE.match(line)):
+            handoff = self._cli("handoff", "show")
+            if handoff.returncode in (EXIT_OK, EXIT_EMPTY):
+                return Status(True, f"complete through seq {done.group(1)}; handoff reads back")
+            if handoff.returncode == EXIT_FORMAT:
+                return Status(
+                    False,
+                    f"history complete through seq {done.group(1)} but the handoff does not "
+                    "match its digest; a history repair cannot fix this",
+                    needs_owner=True,
+                )
+            raise QueueCheckError(f"handoff show exited {handoff.returncode}")
+        gap = _GAP.search(line)
+        if check.returncode != EXIT_FORMAT or not line.startswith("history: DEGRADED") or not gap:
+            raise QueueCheckError(f"history --check exited {check.returncode}")
+        detail = f"history is missing event {gap.group(1)} ({gap.group(2)}...)"
+        probe = self._cli("history-repair")
+        report = self._report(probe)
+        found = report.get("status")
+        if probe.returncode == EXIT_OK and found == "recoverable":
+            seqs = ", ".join(f"{int(s)} ({str(f)[:12]})" for s, f in report.get("appended", []))
+            return Status(False, f"{detail}; exact copy found for {seqs}, recovery dispatched")
+        if probe.returncode == EXIT_OK and found == "complete" and not _retried:
+            return self.status(_retried=True)  # closed concurrently between the two reads
+        if probe.returncode == EXIT_FORMAT and found == "unrecoverable":
+            return Status(
+                False,
+                f"{detail}; no exact copy in any comment, export or mirror: a versioned "
+                "re-anchor needs the queue owner's authorization",
+                needs_owner=True,
+            )
+        raise QueueCheckError(f"history-repair probe exited {probe.returncode}")
 
     def recover(self) -> dict[str, Any]:
-        """Append the exact missing events, then prove the chain and handoff read back."""
+        """Append the exact missing events. The Standard's CLI reads history and handoff
+        back itself; its ``read_back`` (or an already complete chain) is the proof."""
         repair = self._cli("history-repair", "--apply")
         report = self._report(repair)
-        if repair.returncode != EXIT_OK:
-            raise RuntimeError(
-                f"queue history unrecoverable: {report.get('status', self._line(repair))}"
-            )
-        after = self.status()
-        if not after.done:
-            raise RuntimeError(f"queue history repair did not verify: {after.detail}")
-        return {"repair": report, "verified": True, "detail": after.detail}
+        status = report.get("status")
+        if repair.returncode == EXIT_OK and status == "complete":
+            return {
+                "status": "complete",
+                "seq": report.get("seq"),
+                "appended": [],
+                "verified": True,
+            }
+        if (
+            repair.returncode == EXIT_OK
+            and status == "recovered"
+            and report.get("read_back") == {"history": "ok", "handoff": "ok"}
+        ):
+            return {
+                "status": "recovered",
+                "seq": report.get("seq"),
+                "appended": report.get("appended", []),
+                "verified": True,
+            }
+        if status == "unrecoverable":
+            raise RuntimeError("queue history unrecoverable: no exact copy of the missing event")
+        raise RuntimeError(f"queue history repair did not verify (exit {repair.returncode})")
 
     def execute(self, action: str, params: Mapping[str, str]) -> dict[str, Any]:
         if action == "check":
             status = self.status()
-            return {"done": status.done, "detail": status.detail}
+            return {"done": status.done, "detail": status.detail, "needs_owner": status.needs_owner}
         if action == "recover":
             return self.recover()
         raise ValueError(f"unknown queue action: {action}")
+
+
+class UnconfiguredQueue:
+    """Registered when ``ops/fleet.yaml`` declares no queue: a clear refusal, not a KeyError."""
+
+    def execute(self, action: str, params: Mapping[str, str]) -> dict[str, Any]:
+        raise ValueError("ops/fleet.yaml declares no queue")

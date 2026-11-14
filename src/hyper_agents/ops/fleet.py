@@ -98,10 +98,10 @@ class RepoAdapter:
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._fleet = fleet
-        self._secrets = secrets
-        self._forge = forge or FORGES[fleet.forge_adapter](
-            lambda: str(secrets.get(fleet.token_path, fleet.token_name)), fleet.api
+        self._token: Callable[[], str] = lambda: str(
+            secrets.get(fleet.token_path, fleet.token_name)
         )
+        self._forge = forge or FORGES[fleet.forge_adapter](self._token, fleet.api)
         self._now = clock or (lambda: datetime.now(UTC))
         self._pruned: dict[str, dict[str, Any]] = {}
 
@@ -112,7 +112,7 @@ class RepoAdapter:
     @property
     def token(self) -> Callable[[], str]:
         """The fleet forge token, read on use; for tools that call the forge themselves."""
-        return lambda: str(self._secrets.get(self._fleet.token_path, self._fleet.token_name))
+        return self._token
 
     def desired(self) -> dict[str, object]:
         """The declared settings profile, read through the forge from its single source."""
