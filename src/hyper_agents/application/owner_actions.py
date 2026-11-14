@@ -215,6 +215,8 @@ def request_resolutions(
             continue
         if status.detail.startswith(CHECK_FAILED):
             continue  # a broken check proves nothing; never act on it
+        if status.needs_owner:
+            continue  # the fix cannot succeed until the owner acts; spend no attempt
         running: list[int] = []
         exhausted = 0
         errors: list[str] = []

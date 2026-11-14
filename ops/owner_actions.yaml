@@ -212,20 +212,29 @@ actions:
       attempts:
         - "Maintenance reads each machine identity's lifeos-signing-deny privilege (metadata only)."
         - "The resolver creates or corrects that privilege per drifting non-broker identity and reads it back."
-      why_human_only: Only if Infisical refuses the privilege twice (for example a plan-gated feature).
-      minimum_human_action: Add the deny-readValue privilege for the named identity in the Infisical UI.
-      required_access: Infisical project access that can manage identity privileges
+      why_human_only: >-
+        Granting identity privileges needs project admin, and no workload identity may hold admin
+        (MB-009). So the broker's one-time grant is the owner's (decision 2026-11-14, option A).
+      minimum_human_action: Give ai-coding-harness the identity grant-privileges and assign-additional-privileges privilege once.
+      required_access: Infisical org or project admin (Kyle)
       safety: >-
         The op refuses the broker and any rule but deny-read-value, targets one folder, and reads
-        the privilege back. It never reads, moves, rotates or deletes a secret. Rollback: delete
-        the lifeos-signing-deny privilege.
+        the privilege back. It never reads, moves, rotates or deletes a secret. The broker's grant
+        is bounded by its own member role. Rollback: delete the lifeos-signing-deny privileges,
+        then the broker grant.
       validation: Every non-broker machine identity holds the permanent deny rule on the folder.
       owner: kgsmith19
       source: https://github.com/kgsmith19/hyper-agents/issues/88
     steps:
       - >-
-        Infisical → central-vault → Access Control → Machine Identities → the identity named
-        above → Additional Privileges → Add. Slug `lifeos-signing-deny`, permanent. Rule: Secrets,
-        **Forbid**, action **Read Value**, environment `prod`, secret path `/platform/lifeos-signing`.
-        Do not change ai-coding-harness (the broker).
-      - Nothing else. The next maintenance run verifies and ticks this off.
+        One time, about 2 minutes: Infisical → central-vault → Access Control → Machine
+        Identities → **ai-coding-harness** → Additional Privileges → Add. Slug
+        `broker-assign-privileges`, **permanent**. Rule: subject **Identity**, **Allow**, actions
+        **Grant Privileges** and **Assign Additional Privileges**. Save.
+      - >-
+        Nothing else. The next maintenance run (within 30 minutes) sees the grant, the broker adds
+        the deny rule to every other identity, and this ticks itself off.
+      - >-
+        Only if that automated fix then fails twice: on each identity named above, add the
+        privilege yourself (slug `lifeos-signing-deny`, permanent, Secrets, **Forbid**, Read Value,
+        environment `prod`, path `/platform/lifeos-signing`).

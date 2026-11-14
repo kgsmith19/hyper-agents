@@ -279,6 +279,13 @@ class OwnerAdapter:
                 f"values at {report['path']}",
             )
         names = ", ".join(item["name"] for item in drift)
+        if not report.get("broker_granted", True):
+            return Status(
+                False,
+                f"value-read deny missing for {names}; the broker lacks the one-time "
+                "identity-privileges grant, so the automated fix waits for step 1",
+                needs_owner=True,
+            )
         return Status(
             False,
             f"value-read deny missing or drifted for {names}",
