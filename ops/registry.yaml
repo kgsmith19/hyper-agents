@@ -239,3 +239,20 @@ ops:
     tier: R2
     gate: ops-r2
     params: []
+
+  # Execution-queue history (agent-engineering-standard#342). R0 runs the Standard's
+  # `history --check` and `handoff show`. R2 appends the exact signed copy of a missing event
+  # (hash, sequence and both neighbours must match; never fabricated, nothing edited or
+  # deleted), then reads history and handoff back. Its resolver runs unattended in ops-r2.
+  - id: queue.history_check
+    adapter: queue
+    action: check
+    tier: R0
+    params: []
+
+  - id: queue.history_recover
+    adapter: queue
+    action: recover
+    tier: R2
+    gate: ops-r2
+    params: []
