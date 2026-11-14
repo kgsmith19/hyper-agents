@@ -182,7 +182,7 @@ PRIVILEGES = "/v2/identity-project-additional-privilege"
 class FolderServer(Server):
     """Fake identity additional-privilege API (v2). Metadata and rules only, never a value."""
 
-    def __init__(self, refuse_create: int | None = None) -> None:
+    def __init__(self, refuse_create: int | None = None, broker_granted: bool = True) -> None:
         super().__init__()
         self.roles = {
             BROKER: [{"role": "member"}],
@@ -211,6 +211,19 @@ class FolderServer(Server):
                 ],
             }
         }
+        if broker_granted:
+            self.privileges["30000000-0000-4000-8000-000000000001"] = {
+                "id": "30000000-0000-4000-8000-000000000001",
+                "identityId": BROKER,
+                "slug": "broker-assign-privileges",
+                "isTemporary": False,
+                "permissions": [
+                    {
+                        "subject": "identity",
+                        "action": ["grant-privileges", "assign-additional-privileges"],
+                    }
+                ],
+            }
 
     def __call__(
         self, method: str, url: str, token: str, body: Mapping[str, Any] | None
@@ -272,6 +285,7 @@ def test_signing_folder_report_flags_missing_or_drifted_privilege_and_exempts_br
             {"identity": VIEWER, "name": "dev-agent", "state": "missing"},
             {"identity": DEPLOY, "name": "lifeos-deploy", "state": "drifted"},
         ],
+        "broker_granted": True,
     }
 
 
@@ -368,3 +382,34 @@ def test_folder_boundary_is_registered_r0_r2_and_owner_resolves_each_drift() -> 
         "params": json.dumps({"identity": VIEWER, "rule": "deny-read-value"}),
         "mode": "apply",
     } in dispatched
+
+
+def test_without_the_owner_grant_the_check_waits_for_the_owner_and_spends_no_attempt() -> None:
+    registry = load_registry(ROOT / "ops/registry.yaml")
+    fleet = load_fleet(ROOT / "ops/fleet.yaml")
+    config = load_owner_actions(ROOT / "ops/owner_actions.yaml", registry)
+    action = next(a for a in config.actions if a.id == "signing-folder-boundary")
+    fake = FakeForge()
+    owner = OwnerAdapter(fleet, config, adapter(FolderServer(broker_granted=False)), forge=fake)
+    status = owner._signing_folder_boundary(action)  # pyright: ignore[reportPrivateUsage]
+    assert not status.done and status.needs_owner and status.fixes == ()
+    assert "one-time identity-privileges grant" in status.detail
+    owner.execute("status", {})
+    dispatched = [cast(dict[str, str], w[1]) for w in fake.writes if w[0] == "dispatch"]
+    assert not any(d["op"] == "infisical.signing_folder.restrict" for d in dispatched)
+    assert "broker-assign-privileges" in action.steps[0]
+
+
+def test_an_inverted_or_partial_broker_privilege_is_not_the_grant() -> None:
+    server = FolderServer(broker_granted=False)
+    server.privileges["30000000-0000-4000-8000-000000000002"] = {
+        "id": "30000000-0000-4000-8000-000000000002",
+        "identityId": BROKER,
+        "slug": "partial",
+        "isTemporary": False,
+        "permissions": [
+            {"subject": "identity", "action": "grant-privileges"},
+            {"subject": "identity", "inverted": True, "action": "assign-additional-privileges"},
+        ],
+    }
+    assert adapter(server).broker_can_assign_privileges() is False

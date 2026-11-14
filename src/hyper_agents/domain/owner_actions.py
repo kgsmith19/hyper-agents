@@ -68,6 +68,9 @@ class Status:
     fixes: tuple[tuple[tuple[str, str], ...], ...] = ()
     # An automated fix is in flight: the human steps are not needed yet.
     resolving: bool = False
+    # A precondition only the owner can meet is missing, so the resolver cannot succeed yet:
+    # no attempt is spent and the steps are shown now (e.g. MB-011 before the broker grant).
+    needs_owner: bool = False
 
 
 def blocker_record(action: OwnerAction, status: "Status", now: datetime) -> ManualBlocker:

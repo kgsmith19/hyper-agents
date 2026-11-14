@@ -72,6 +72,9 @@ LIFEOS_BROKER_NAME = "ai-coding-harness"
 # MB-011: forbid reading the private-key value on exactly the signing folder (and below).
 SIGNING_RULE = "deny-read-value"
 SIGNING_PRIVILEGE_SLUG = "lifeos-signing-deny"
+# The one-time owner grant (MB-011 option A, owner decision 2026-11-14) that lets the broker
+# attach the deny privilege; built-in member holds neither action.
+BROKER_GRANT_ACTIONS = frozenset({"grant-privileges", "assign-additional-privileges"})
 SIGNING_DENY_RULES: list[dict[str, Any]] = [
     {
         "subject": "secrets",
@@ -363,6 +366,43 @@ class InfisicalAdapter:
         held = _canonical_rules(cast(list[Any], privilege.get("permissions") or []))
         return "deny" if held == _canonical_rules(SIGNING_DENY_RULES) else "drifted"
 
+    def broker_can_assign_privileges(self) -> bool:
+        """Whether the broker holds the one-time owner grant MB-011 needs: an additional
+        privilege allowing identity `grant-privileges` and `assign-additional-privileges`.
+        Built-in member lacks both, so without it every restrict call is refused (403)."""
+        broker = next(
+            (row for row in self.identity_roles() if row["name"] == LIFEOS_BROKER_NAME), None
+        )
+        if broker is None:
+            return False
+        listing = self._send(
+            "GET",
+            f"{self._privileges_url()}?identityId={quote(str(broker['id']))}"
+            f"&projectId={quote(self._project_id)}",
+            self._access_token(),
+            None,
+        )
+        for row in cast(list[dict[str, Any]], listing.get("privileges") or []):
+            if row.get("isTemporary"):
+                continue
+            one = self._send(
+                "GET", self._privileges_url(str(row["id"])), self._access_token(), None
+            )
+            privilege = cast(dict[str, Any], one.get("privilege") or {})
+            rules = cast(list[Any], privilege.get("permissions") or [])
+            granted: set[str] = set()
+            for rule in rules:
+                rule = cast(Mapping[str, Any], rule)
+                subject = rule.get("subject")
+                subjects = [subject] if isinstance(subject, str) else list(subject or [])
+                if "identity" not in subjects or rule.get("inverted"):
+                    continue
+                action = rule.get("action")
+                granted.update([action] if isinstance(action, str) else list(action or []))
+            if BROKER_GRANT_ACTIONS <= granted:
+                return True
+        return False
+
     def signing_folder_access_report(self) -> dict[str, Any]:
         """Privilege metadata only. The signing-key value is never requested."""
         protected: list[str] = []
@@ -380,6 +420,7 @@ class InfisicalAdapter:
             "broker": LIFEOS_BROKER_NAME,
             "protected": sorted(protected),
             "drift": sorted(drift, key=lambda item: item["name"]),
+            "broker_granted": self.broker_can_assign_privileges() if drift else True,
         }
 
     def restrict_signing_folder(self, identity: str, rule: str) -> dict[str, Any]:
