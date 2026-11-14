@@ -20,6 +20,7 @@ from hyper_agents.ops.core import OpRefused, run_op
 from hyper_agents.ops.fleet import RepoAdapter, load_fleet
 from hyper_agents.ops.lifeos_tokens import LifeosAdapter
 from hyper_agents.ops.owner import OwnerAdapter, load_owner_actions
+from hyper_agents.ops.queue_history import QueueHistory
 from hyper_agents.ops.registry import load_registry
 
 EXIT_OK, EXIT_FAILED, EXIT_REFUSED = 0, 1, 2
@@ -67,19 +68,24 @@ def main(argv: list[str] | None = None) -> int:
     raw_params = cast(dict[str, Any], decoded)
 
     infisical = InfisicalAdapter(project_id=os.environ.get("INFISICAL_PROJECT_ID", ""))
-    adapters = {
+    fleet = load_fleet(args.fleet)
+    repos = RepoAdapter(fleet, infisical)
+    adapters: dict[str, Any] = {
         "infisical": infisical,
         "github": GithubAdapter(infisical),
         "vendor": VendorAdapter(infisical),
         "cli": CliAdapter(),
-        "repo": RepoAdapter(load_fleet(args.fleet), infisical),
+        "repo": repos,
         "lifeos": LifeosAdapter(infisical),
         "owner": OwnerAdapter(
-            load_fleet(args.fleet),
+            fleet,
             load_owner_actions(args.owner_actions, load_registry(args.registry)),
             infisical,
+            repos=repos,
         ),
     }
+    if fleet.queue is not None:
+        adapters["queue"] = QueueHistory(repos.forge, fleet.queue, repos.token)
     try:
         receipt = run_op(
             load_registry(args.registry),

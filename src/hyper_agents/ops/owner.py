@@ -27,6 +27,7 @@ from hyper_agents.domain.owner_actions import (
 from hyper_agents.ops.adapters import ASSIGNABLE_ROLES
 from hyper_agents.ops.fleet import Fleet, RepoAdapter
 from hyper_agents.ops.lifeos_tokens import CONTROLLERS, PUBLIC_KEY, RENEW_WITHIN, token_state
+from hyper_agents.ops.queue_history import QueueHistory
 
 
 @dataclass(frozen=True)
@@ -141,6 +142,7 @@ class OwnerAdapter:
         forge: ForgePort | None = None,
         clock: Callable[[], datetime] | None = None,
         repos: RepoAdapter | None = None,
+        queue: QueueHistory | None = None,
     ) -> None:
         self._fleet = fleet
         self._config = config
@@ -150,6 +152,9 @@ class OwnerAdapter:
         self._forge = self._repos.forge
         self._now = clock or (lambda: datetime.now(UTC))
         self._access: dict[str, Access] | None = None
+        self._queue = queue or (
+            QueueHistory(self._forge, fleet.queue, self._repos.token) if fleet.queue else None
+        )
 
     def _fleet_access(self) -> dict[str, Access]:
         if self._access is None:
@@ -294,6 +299,13 @@ class OwnerAdapter:
             ),
         )
 
+    def _queue_history_complete(self, action: OwnerAction) -> Status:
+        """The Standard's queue history is a complete chain and its handoff reads back
+        (agent-engineering-standard#342); a recoverable gap goes to the resolver."""
+        if self._queue is None:
+            raise ValueError("ops/fleet.yaml declares no queue")
+        return self._queue.status()
+
     def execute(self, action: str, params: Mapping[str, str]) -> dict[str, Any]:
         if action != "status":
             raise ValueError(f"unknown owner action: {action}")
@@ -305,6 +317,7 @@ class OwnerAdapter:
             "identities_least_privilege": self._identities_least_privilege,
             "signing_folder_boundary": self._signing_folder_boundary,
             "controller_tokens_fresh": self._controller_tokens_fresh,
+            "queue_history_complete": self._queue_history_complete,
         }
         report = tracker.actions_status(
             self._forge,

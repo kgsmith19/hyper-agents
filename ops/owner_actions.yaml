@@ -238,3 +238,45 @@ actions:
         Only if that automated fix then fails twice: on each identity named above, add the
         privilege yourself (slug `lifeos-signing-deny`, permanent, Secrets, **Forbid**, Read Value,
         environment `prod`, path `/platform/lifeos-signing`).
+
+  - id: queue-history
+    title: "Execution-queue history: complete and repaired automatically"
+    why: >-
+      Every session routes work from the Standard's execution queue, whose history is a hash
+      chain. A missing event (agent-engineering-standard#342) leaves the queue usable but its
+      history and handoff unverifiable. Maintenance checks the chain every run and, when an exact
+      signed copy of a missing event exists in any comment page, export or mirror, appends it and
+      reads history and handoff back. Nothing is ever fabricated, edited or deleted.
+    check: queue_history_complete
+    resolver:
+      op: queue.history_recover
+      max_attempts: 2
+    blocker:
+      blocker_id: MB-012
+      provider: agent-engineering-standard
+      capability: execution-queue history
+      resource: kgsmith19/agent-engineering-standard#277 (queue v2 history)
+      failure_class: approval_gate
+      attempts:
+        - "Maintenance runs work_queue.py history --check and handoff show every run."
+        - "The resolver dispatches queue.history_recover (R2, ops-r2), which appends only an exact signed copy whose hash and neighbours verify."
+      why_human_only: >-
+        Only when no exact copy exists anywhere: re-anchoring history is R3 and needs the queue
+        owner's explicit authorization of a versioned procedure.
+      minimum_human_action: Decide whether to authorize a versioned re-anchor of the queue history.
+      required_access: Queue owner (kgsmith19)
+      safety: >-
+        Recovery appends one comment holding the exact original event and changes no state; a
+        duplicate is ignored by hash. No history comment is edited or deleted, and history-reanchor
+        refuses without authorization.
+      validation: history --check reports complete and handoff show reads back.
+      owner: kgsmith19
+      source: https://github.com/kgsmith19/agent-engineering-standard/issues/342
+    steps:
+      - >-
+        Only shown when no exact copy of the missing event exists. Reply on
+        agent-engineering-standard#342 with either "authorize re-anchor" (a versioned procedure
+        then keeps a digest manifest of the old state, records the missing link and proves item,
+        order and handoff equivalence before it activates) or a pointer to a copy of the event
+        (an export bundle or a mirror history.jsonl).
+      - Nothing else. The next maintenance run re-checks and ticks this off.

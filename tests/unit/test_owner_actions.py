@@ -17,6 +17,7 @@ from hyper_agents.ops.fleet import load_fleet
 from hyper_agents.ops.lifeos_tokens import CONTROLLERS, PUBLIC_KEY, keygen
 from hyper_agents.ops.lifeos_tokens import mint as lifeos_mint
 from hyper_agents.ops.owner import OwnerAdapter, load_owner_actions
+from hyper_agents.ops.queue_history import QueueHistory
 from hyper_agents.ops.registry import load_registry
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -112,6 +113,16 @@ def test_settings_apply_is_requested_once_per_distinct_drift() -> None:
     assert request_settings_apply(forge, TRACKER, 7, changed, **kwargs) == ["o/one"]
 
 
+class HealthyQueue(QueueHistory):
+    """The queue-history check is covered in test_queue_history; here it is healthy."""
+
+    def __init__(self) -> None:
+        pass
+
+    def status(self) -> Status:
+        return Status(True, "history: ok, complete through seq 616; handoff reads back")
+
+
 def _owner(fake: FakeForge, secrets: Any) -> OwnerAdapter:
     fake.files[PROFILE] = json.dumps({"delete_branch_on_merge": True})
     return OwnerAdapter(
@@ -120,6 +131,7 @@ def _owner(fake: FakeForge, secrets: Any) -> OwnerAdapter:
         secrets,
         forge=fake,
         clock=lambda: NOW,
+        queue=HealthyQueue(),
     )
 
 

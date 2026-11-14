@@ -18,6 +18,7 @@ from hyper_agents.adapters.forge_github import GithubForge
 from hyper_agents.application import repo_maintenance as maintenance
 from hyper_agents.application.ports import ForgePort
 from hyper_agents.domain.forge import LedgerBranch
+from hyper_agents.ops.queue_history import QueueConfig, load_queue_config
 
 FORGES: dict[str, Callable[[Callable[[], str], str], ForgePort]] = {
     "github": lambda token, api: GithubForge(token=token, api=api),
@@ -38,6 +39,7 @@ class Fleet:
     branch_ledger: dict[str, tuple[LedgerBranch, ...]] = field(
         default_factory=lambda: dict[str, tuple[LedgerBranch, ...]]()
     )
+    queue: QueueConfig | None = None
 
 
 def load_branch_ledger(path: Path, repos: tuple[str, ...]) -> dict[str, tuple[LedgerBranch, ...]]:
@@ -83,6 +85,7 @@ def load_fleet(path: Path) -> Fleet:
             if raw.get("branch_ledger")
             else {}
         ),
+        queue=load_queue_config(cast(dict[str, Any] | None, raw.get("queue"))),
     )
 
 
@@ -95,6 +98,7 @@ class RepoAdapter:
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._fleet = fleet
+        self._secrets = secrets
         self._forge = forge or FORGES[fleet.forge_adapter](
             lambda: str(secrets.get(fleet.token_path, fleet.token_name)), fleet.api
         )
@@ -104,6 +108,11 @@ class RepoAdapter:
     @property
     def forge(self) -> ForgePort:
         return self._forge
+
+    @property
+    def token(self) -> Callable[[], str]:
+        """The fleet forge token, read on use; for tools that call the forge themselves."""
+        return lambda: str(self._secrets.get(self._fleet.token_path, self._fleet.token_name))
 
     def desired(self) -> dict[str, object]:
         """The declared settings profile, read through the forge from its single source."""

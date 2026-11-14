@@ -52,6 +52,8 @@ them. Secret values are never parameters. Secrets are referenced by Infisical pa
 | `repo.branch_prune` | R1 | Delete `ops/branch_ledger.yaml` branches, each only while its head equals the recorded SHA (tag `archive/<branch>` first where listed); never the default branch or one an open change uses; `blocked` without Contents write |
 | `github.secret.set`, `github.secret.delete` | R2 | Runs in the `ops-r2` environment (no reviewer) |
 | `repo.settings_apply` | R2 | Runs in the `ops-r2` environment (no reviewer) |
+| `queue.history_check` | R0 | Runs the Standard's own `work_queue.py history --check` and `handoff show` (fetched at `ops/fleet.yaml` `queue.ref`); names the first missing event by sequence and fingerprint |
+| `queue.history_recover` | R2 | `history-repair --apply`: append only the exact signed copy of a missing event (hash, sequence and both neighbours must match), then read history and handoff back; never fabricates, edits or deletes. Resolver of owner action `queue-history` (MB-012) |
 
 ## Identities and bootstrap
 

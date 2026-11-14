@@ -27,3 +27,14 @@ repos:
 # Reconciled branches that `repo.branch_prune` may delete (lease = recorded head SHA).
 # Path is relative to this file. See docs/ops/branch-reconciliation-2026-11-13.md.
 branch_ledger: branch_ledger.yaml
+
+# The Standard's execution queue (agent-engineering-standard#342). The queue.* ops fetch these
+# tools at this ref through the forge and run them; the queue logic lives only in the Standard.
+queue:
+  repo: kgsmith19/agent-engineering-standard
+  ref: main
+  issue: 277
+  tools:
+    - tools/queue_core.py
+    - tools/queue_store.py
+    - tools/work_queue.py
